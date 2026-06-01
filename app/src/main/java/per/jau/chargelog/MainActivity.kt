@@ -33,6 +33,7 @@ import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener
+import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -514,6 +515,102 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         startLiveTextUpdateLoop()
+
+        // Check and report background stats when returning to the foreground
+        val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
+        val appInBackground = prefs.getBoolean("APP_IN_BACKGROUND", false)
+        if (appInBackground) {
+            // Reset flag immediately to avoid duplicate popups
+            prefs.edit().putBoolean("APP_IN_BACKGROUND", false).apply()
+            
+            val startTime = prefs.getLong("BACKGROUND_START_TIME", 0L)
+            val startBattery = prefs.getInt("BACKGROUND_START_BATTERY", -1)
+            val minP = prefs.getFloat("BG_MIN_POWER", Float.MAX_VALUE)
+            val maxP = prefs.getFloat("BG_MAX_POWER", -Float.MAX_VALUE)
+            
+            val endBattery = BatteryUtils.getBatteryLevel(this)
+            val batteryChange = if (startBattery != -1) endBattery - startBattery else 0
+            val durationMs = System.currentTimeMillis() - startTime
+            val durationMins = durationMs / 60000
+            val durationSecs = (durationMs % 60000) / 1000
+            
+            if (durationMs > 2000) {
+                var dialogShown = false
+                val showDialogOnce = {
+                    if (!dialogShown) {
+                        dialogShown = true
+                        showBackgroundStatsDialog(minP, maxP, startBattery, endBattery, batteryChange, durationMins, durationSecs)
+                    }
+                }
+                val snackbar = Snackbar.make(
+                    findViewById(R.id.main),
+                    "已生成后台运行统计报告",
+                    Snackbar.LENGTH_LONG
+                ).setDuration(8000)
+                .setAction("查看") {
+                    showDialogOnce()
+                }
+                // Make the entire snackbar clickable
+                snackbar.view.setOnClickListener {
+                    snackbar.dismiss()
+                    showDialogOnce()
+                }
+                snackbar.show()
+            }
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Save initial background state when activity goes to background (including screen lock)
+        val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
+        val currentBattery = BatteryUtils.getBatteryLevel(this)
+        prefs.edit()
+            .putBoolean("APP_IN_BACKGROUND", true)
+            .putLong("BACKGROUND_START_TIME", System.currentTimeMillis())
+            .putInt("BACKGROUND_START_BATTERY", currentBattery)
+            .putFloat("BG_MIN_POWER", Float.MAX_VALUE)
+            .putFloat("BG_MAX_POWER", -Float.MAX_VALUE)
+            .apply()
+    }
+
+    private fun showBackgroundStatsDialog(
+        minPower: Float,
+        maxPower: Float,
+        startBattery: Int,
+        endBattery: Int,
+        batteryChange: Int,
+        durationMins: Long,
+        durationSecs: Long
+    ) {
+        val message = StringBuilder().apply {
+            append("后台运行时间: ")
+            if (durationMins > 0) {
+                append("${durationMins}分")
+            }
+            append("${durationSecs}秒\n\n")
+            
+            append("电池电量变化:\n")
+            append("进入后台时: $startBattery%\n")
+            append("返回前台时: $endBattery%\n")
+            val changeSign = if (batteryChange >= 0) "+$batteryChange%" else "$batteryChange%"
+            append("电量变化: $changeSign\n\n")
+            
+            append("后台期间功率范围:\n")
+            if (minPower == Float.MAX_VALUE || maxPower == -Float.MAX_VALUE) {
+                append("最小功率: -- W\n")
+                append("最大功率: -- W")
+            } else {
+                append(String.format(Locale.getDefault(), "最小功率: %.2f W\n", minPower))
+                append(String.format(Locale.getDefault(), "最大功率: %.2f W", maxPower))
+            }
+        }.toString()
+
+        AlertDialog.Builder(this)
+            .setTitle("后台运行统计报告")
+            .setMessage(message)
+            .setPositiveButton("我知道了", null)
+            .show()
     }
 
     override fun onPause() {

@@ -143,6 +143,7 @@ class ChargeLoggingService : Service() {
                             
                             // Update dynamic notification
                             updateNotification(avgVoltage, avgCurrent, avgPower, latestBatteryLevel, isRecording = true)
+                            updateBackgroundPowerStats(prefs, avgPower)
                         }
                     } else {
                         // Just update notification with real-time value without recording to database
@@ -154,6 +155,7 @@ class ChargeLoggingService : Service() {
                             val power = voltage * current
                             val batteryLevel = BatteryUtils.getBatteryLevel(this@ChargeLoggingService)
                             updateNotification(voltage, current, power, batteryLevel, isRecording = false)
+                            updateBackgroundPowerStats(prefs, power)
                         }
                         kotlinx.coroutines.delay(1000L)
                     }
@@ -230,6 +232,22 @@ class ChargeLoggingService : Service() {
         )
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(serviceChannel)
+    }
+
+    private fun updateBackgroundPowerStats(prefs: android.content.SharedPreferences, currentPower: Float) {
+        val appInBackground = prefs.getBoolean("APP_IN_BACKGROUND", false)
+        if (appInBackground) {
+            val minP = prefs.getFloat("BG_MIN_POWER", Float.MAX_VALUE)
+            val maxP = prefs.getFloat("BG_MAX_POWER", -Float.MAX_VALUE)
+            
+            val newMin = if (currentPower < minP) currentPower else minP
+            val newMax = if (currentPower > maxP) currentPower else maxP
+            
+            prefs.edit()
+                .putFloat("BG_MIN_POWER", newMin)
+                .putFloat("BG_MAX_POWER", newMax)
+                .apply()
+        }
     }
 
     companion object {
