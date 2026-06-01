@@ -20,7 +20,7 @@ abstract class ChargeDatabase : RoomDatabase() {
                     ChargeDatabase::class.java,
                     "charge_database"
                 )
-                .fallbackToDestructiveMigration()
+                    .fallbackToDestructiveMigration(false)
                 .build()
                 INSTANCE = instance
                 instance
