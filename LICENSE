@@ -1,4 +1,4 @@
-Academic and Non-Commercial Use License v1.0
+Academic and Non-Commercial Use License v1.1
 
 Copyright (c) 2026 The Copyright Holder
 
@@ -8,9 +8,23 @@ Permission is hereby granted, free of charge, to any individual, educational ins
 
 1. Redistributions of the Software or substantial portions of the Software must retain this copyright notice and this license.
 
-2. Any publication, report, thesis, dissertation, or other scholarly work that uses or derives from the Software should appropriately acknowledge the Software.
+2. Any publication, report, thesis, dissertation, academic paper, or other scholarly work that uses or derives from the Software should appropriately acknowledge the Software.
 
 3. Commercial use of the Software is prohibited without prior written permission from the copyright holder.
+
+4. Any modified version, derivative work, fork, or redistribution of the Software must:
+
+   a. retain this license;
+
+   b. retain all original copyright notices;
+
+   c. clearly state that the work is derived from the original Software;
+
+   d. provide a visible reference to the original project repository in the documentation, source code, README file, or other distribution materials;
+
+   e. clearly indicate that modifications have been made.
+
+5. No person or organization may misrepresent a modified version of the Software as the original Software.
 
 For the purposes of this license, "Commercial Use" includes, but is not limited to:
 
