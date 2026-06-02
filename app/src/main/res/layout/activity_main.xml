@@ -118,13 +118,111 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="清空屏幕"
+            android:text="清空"
+            android:layout_marginHorizontal="4dp"/>
+
+        <Button
+            android:id="@+id/btnExit"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="退出"
             android:layout_marginStart="4dp"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="8dp">
+
+        <TextView
+            android:id="@+id/tvIntervalLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="采样间隔: 5秒"
+            android:textSize="14sp"/>
+
+        <SeekBar
+            android:id="@+id/sbInterval"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:max="29"
+            android:progress="4"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="8dp">
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchBgReport"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="启用后台统计报告"
+            android:textSize="14sp"
+            android:checked="true"/>
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Created by Jau"
+            android:textSize="12sp"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textStyle="italic"/>
     </LinearLayout>
 
     <com.github.mikephil.charting.charts.LineChart
         android:id="@+id/lineChart"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- Background Stats Custom Banner -->
+    <LinearLayout
+        android:id="@+id/layoutBgReportBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#1A00E676" 
+        android:padding="8dp"
+        android:layout_marginTop="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="已生成后台运行统计报告"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="?android:attr/textColorPrimary"/>
+
+        <Button
+            android:id="@+id/btnBannerView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="查看"
+            android:layout_marginEnd="8dp"
+            style="?android:attr/buttonStyleSmall"/>
+
+        <Button
+            android:id="@+id/btnBannerClose"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="关闭"
+            style="?android:attr/buttonStyleSmall"/>
+    </LinearLayout>
 
 </LinearLayout>

@@ -27,11 +27,15 @@ object BatteryUtils {
         return 0f
     }
 
-    fun getCurrent(context: Context): Float {
+    fun getCurrent(context: Context, batteryStatus: Intent? = null): Float {
         // Determine charging state dynamically to sign current correctly
-        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        val batteryStatus = context.registerReceiver(null, filter)
-        val status = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val status = if (batteryStatus != null) {
+            batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        } else {
+            val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+            val intent = context.registerReceiver(null, filter)
+            intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        }
         val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                 status == BatteryManager.BATTERY_STATUS_FULL
 
@@ -52,11 +56,13 @@ object BatteryUtils {
         return if (isCharging) currentVal else -currentVal
     }
 
-    fun getBatteryLevel(context: Context): Int {
-        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        val batteryStatus = context.registerReceiver(null, filter) ?: return -1
-        val level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-        val scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+    fun getBatteryLevel(context: Context, batteryStatus: Intent? = null): Int {
+        val status = batteryStatus ?: run {
+            val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+            context.registerReceiver(null, filter)
+        } ?: return -1
+        val level = status.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = status.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
         if (level >= 0 && scale > 0) {
             return (level * 100 / scale.toFloat()).toInt()
         }

@@ -11,8 +11,17 @@
         android:text="原始充电数据"
         android:textSize="20sp"
         android:textStyle="bold"
-        android:layout_marginBottom="12dp"
+        android:layout_marginBottom="4dp"
         android:textColor="?android:attr/textColorPrimary"/>
+
+    <TextView
+        android:id="@+id/tvRawSummary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:layout_marginBottom="12dp"
+        android:textColor="?android:attr/textColorSecondary"
+        android:visibility="gone"/>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -25,7 +34,7 @@
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1.5"
+            android:layout_weight="1.2"
             android:text="时间"
             android:textStyle="bold"
             android:textColor="?android:attr/textColorPrimary"/>
@@ -33,7 +42,7 @@
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_weight="0.8"
             android:text="电压(V)"
             android:textStyle="bold"
             android:gravity="end"
@@ -42,7 +51,7 @@
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_weight="0.8"
             android:text="电流(A)"
             android:textStyle="bold"
             android:gravity="end"
@@ -51,8 +60,17 @@
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1.2"
+            android:layout_weight="0.8"
             android:text="功率(W)"
+            android:textStyle="bold"
+            android:gravity="end"
+            android:textColor="?android:attr/textColorPrimary"/>
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.8"
+            android:text="电量(%)"
             android:textStyle="bold"
             android:gravity="end"
             android:textColor="?android:attr/textColorPrimary"/>
@@ -64,10 +82,26 @@
         android:layout_height="0dp"
         android:layout_weight="1" />
 
-    <Button
-        android:id="@+id/btnCloseDialog"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="关闭"
-        android:layout_marginTop="12dp"/>
+        android:orientation="horizontal"
+        android:layout_marginTop="12dp">
+
+        <Button
+            android:id="@+id/btnExportCSV"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="导出 CSV"
+            android:layout_marginEnd="8dp"/>
+
+        <Button
+            android:id="@+id/btnCloseDialog"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="关闭"
+            android:layout_marginStart="8dp"/>
+    </LinearLayout>
 </LinearLayout>

@@ -21,17 +21,18 @@ import per.jau.chargelog.data.ChargeDatabase
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 
 data class ChargeSession(
     val startTime: Long,
     val endTime: Long,
-    val maxPower: Float,
-    val minPower: Float,
-    val maxVoltage: Float,
-    val minVoltage: Float,
-    val maxCurrent: Float,
-    val minCurrent: Float,
-    val sessionId: Long
+    val sessionId: Long,
+    val startBattery: Int,
+    val endBattery: Int,
+    val minChargePower: Float?,
+    val maxChargePower: Float?,
+    val minDischargePower: Float?,
+    val maxDischargePower: Float?
 )
 
 class HistoryActivity : AppCompatActivity() {
@@ -39,11 +40,15 @@ class HistoryActivity : AppCompatActivity() {
     private lateinit var rvHistory: RecyclerView
     private lateinit var adapter: HistoryAdapter
     private lateinit var btnClearAll: Button
+    private lateinit var btnBack: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge() // Enable edge-to-edge support for consistent UI with MainActivity
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_history)
+
+        // Enable standard action bar back arrow if present
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
         val mainView = findViewById<View>(R.id.history_main)
         val pLeft = mainView.paddingLeft
@@ -67,6 +72,11 @@ class HistoryActivity : AppCompatActivity() {
         rvHistory = findViewById(R.id.rvHistory)
         rvHistory.layoutManager = LinearLayoutManager(this)
         
+        btnBack = findViewById(R.id.btnBack)
+        btnBack.setOnClickListener {
+            finish()
+        }
+
         btnClearAll = findViewById(R.id.btnClearAll)
         btnClearAll.setOnClickListener {
             AlertDialog.Builder(this)
@@ -85,7 +95,6 @@ class HistoryActivity : AppCompatActivity() {
             onClick = { session ->
                 val intent = Intent(this, MainActivity::class.java).apply {
                     putExtra("HISTORY_SESSION_ID", session.sessionId)
-                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 }
                 startActivity(intent)
             },
@@ -107,6 +116,14 @@ class HistoryActivity : AppCompatActivity() {
         loadHistory()
     }
 
+    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
+        if (item.itemId == android.R.id.home) {
+            finish()
+            return true
+        }
+        return super.onOptionsItemSelected(item)
+    }
+
     private fun loadHistory() {
         val dao = ChargeDatabase.getDatabase(this).chargeDao()
         lifecycleScope.launch {
@@ -122,23 +139,29 @@ class HistoryActivity : AppCompatActivity() {
                     val sorted = sessionRecords.sortedBy { it.timestamp }
                     val start = sorted.first().timestamp
                     val end = sorted.last().timestamp
-                    val maxP = sorted.maxOf { it.power }
-                    val minP = sorted.minOf { it.power }
-                    val maxV = sorted.maxOf { it.voltage }
-                    val minV = sorted.minOf { it.voltage }
-                    val maxC = sorted.maxOf { it.current }
-                    val minC = sorted.minOf { it.current }
+                    val startBat = sorted.first().batteryLevel
+                    val endBat = sorted.last().batteryLevel
+                    
+                    // Split charge and discharge
+                    val chargePoints = sorted.filter { it.power >= 0 }
+                    val dischargePoints = sorted.filter { it.power < 0 }
+                    
+                    val minChargePower = if (chargePoints.isNotEmpty()) chargePoints.minOf { it.power } else null
+                    val maxChargePower = if (chargePoints.isNotEmpty()) chargePoints.maxOf { it.power } else null
+                    
+                    val minDischargePower = if (dischargePoints.isNotEmpty()) dischargePoints.minOf { abs(it.power) } else null
+                    val maxDischargePower = if (dischargePoints.isNotEmpty()) dischargePoints.maxOf { abs(it.power) } else null
                     
                     ChargeSession(
                         startTime = start,
                         endTime = end,
-                        maxPower = maxP,
-                        minPower = minP,
-                        maxVoltage = maxV,
-                        minVoltage = minV,
-                        maxCurrent = maxC,
-                        minCurrent = minC,
-                        sessionId = sessionId
+                        sessionId = sessionId,
+                        startBattery = startBat,
+                        endBattery = endBat,
+                        minChargePower = minChargePower,
+                        maxChargePower = maxChargePower,
+                        minDischargePower = minDischargePower,
+                        maxDischargePower = maxDischargePower
                     )
                 }
                 
@@ -175,9 +198,24 @@ class HistoryAdapter(
         holder.tvSessionTime.text = "$startStr - $endStr"
         holder.tvSessionDuration.text = "时长: $durationMins 分钟"
         
-        holder.tvVoltageRange.text = String.format(Locale.getDefault(), "电压: %.1f - %.1f V", session.minVoltage, session.maxVoltage)
-        holder.tvCurrentRange.text = String.format(Locale.getDefault(), "电流: %.2f - %.2f A", session.minCurrent, session.maxCurrent)
-        holder.tvPowerRange.text = String.format(Locale.getDefault(), "功率: %.1f W - %.1f W", session.minPower, session.maxPower)
+        // Build power range string
+        val powerBuilder = StringBuilder()
+        if (session.minChargePower != null && session.maxChargePower != null) {
+            powerBuilder.append(String.format(Locale.getDefault(), "充电功率: 最小 %.1f W - 最大 %.1f W", session.minChargePower, session.maxChargePower))
+        }
+        if (session.minDischargePower != null && session.maxDischargePower != null) {
+            if (powerBuilder.isNotEmpty()) powerBuilder.append("\n")
+            powerBuilder.append(String.format(Locale.getDefault(), "放电功率: 最小 %.1f W - 最大 %.1f W", session.minDischargePower, session.maxDischargePower))
+        }
+        if (powerBuilder.isEmpty()) {
+            powerBuilder.append("功率: --")
+        }
+        holder.tvPowerRange.text = powerBuilder.toString()
+        
+        // Battery range
+        val batChange = session.endBattery - session.startBattery
+        val changeSign = if (batChange >= 0) "+$batChange%" else "$batChange%"
+        holder.tvBatteryRange.text = "电量变化: ${session.startBattery}% -> ${session.endBattery}% ($changeSign)"
 
         holder.itemView.setOnClickListener {
             onClick(session)
@@ -193,8 +231,7 @@ class HistoryAdapter(
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvSessionTime: TextView = view.findViewById(R.id.tvSessionTime)
         val tvSessionDuration: TextView = view.findViewById(R.id.tvSessionDuration)
-        val tvVoltageRange: TextView = view.findViewById(R.id.tvVoltageRange)
-        val tvCurrentRange: TextView = view.findViewById(R.id.tvCurrentRange)
         val tvPowerRange: TextView = view.findViewById(R.id.tvPowerRange)
+        val tvBatteryRange: TextView = view.findViewById(R.id.tvBatteryRange)
     }
 }

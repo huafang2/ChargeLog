@@ -9,7 +9,7 @@
         android:id="@+id/tvRawTime"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_weight="1.5"
+        android:layout_weight="1.2"
         android:textSize="14sp"
         android:textColor="?android:attr/textColorPrimary"/>
 
@@ -17,7 +17,7 @@
         android:id="@+id/tvRawVoltage"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
+        android:layout_weight="0.8"
         android:textSize="14sp"
         android:gravity="end"
         android:textColor="?android:attr/textColorPrimary"/>
@@ -26,7 +26,7 @@
         android:id="@+id/tvRawCurrent"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
+        android:layout_weight="0.8"
         android:textSize="14sp"
         android:gravity="end"
         android:textColor="?android:attr/textColorPrimary"/>
@@ -35,7 +35,16 @@
         android:id="@+id/tvRawPower"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_weight="1.2"
+        android:layout_weight="0.8"
+        android:textSize="14sp"
+        android:gravity="end"
+        android:textColor="?android:attr/textColorPrimary"/>
+
+    <TextView
+        android:id="@+id/tvRawBattery"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="0.8"
         android:textSize="14sp"
         android:gravity="end"
         android:textColor="?android:attr/textColorPrimary"/>
