@@ -40,7 +40,6 @@ class HistoryActivity : AppCompatActivity() {
     private lateinit var rvHistory: RecyclerView
     private lateinit var adapter: HistoryAdapter
     private lateinit var btnClearAll: Button
-    private lateinit var btnBack: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -71,11 +70,6 @@ class HistoryActivity : AppCompatActivity() {
 
         rvHistory = findViewById(R.id.rvHistory)
         rvHistory.layoutManager = LinearLayoutManager(this)
-        
-        btnBack = findViewById(R.id.btnBack)
-        btnBack.setOnClickListener {
-            finish()
-        }
 
         btnClearAll = findViewById(R.id.btnClearAll)
         btnClearAll.setOnClickListener {

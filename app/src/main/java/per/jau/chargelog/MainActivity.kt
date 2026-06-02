@@ -68,6 +68,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnExit: Button
     private lateinit var layoutBgReportBanner: View
     private lateinit var tabLayout: TabLayout
+    private lateinit var layoutInterval: View
+    private lateinit var switchBgReport: androidx.appcompat.widget.SwitchCompat
 
     private lateinit var tvCurrentVoltage: TextView
     private lateinit var tvCurrentCurrent: TextView
@@ -154,7 +156,8 @@ class MainActivity : AppCompatActivity() {
         tvCurrentPower = findViewById(R.id.tvCurrentPower)
         tvCurrentProtocol = findViewById(R.id.tvCurrentProtocol)
 
-        val switchBgReport = findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switchBgReport)
+        layoutInterval = findViewById(R.id.layoutInterval)
+        switchBgReport = findViewById(R.id.switchBgReport)
         switchBgReport.isChecked = prefs.getBoolean("ENABLE_BG_REPORT", true)
         switchBgReport.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("ENABLE_BG_REPORT", isChecked).apply()
@@ -365,7 +368,10 @@ class MainActivity : AppCompatActivity() {
             btnStop.visibility = View.GONE
             btnClear.visibility = View.GONE
             btnExit.visibility = View.GONE
+            btnHistory.visibility = View.GONE
             layoutBgReportBanner.visibility = View.GONE
+            layoutInterval.visibility = View.GONE
+            switchBgReport.visibility = View.GONE
         } else {
             val recording = isRecording()
             if (recording) {
@@ -377,6 +383,9 @@ class MainActivity : AppCompatActivity() {
             }
             btnClear.visibility = View.VISIBLE
             btnExit.visibility = View.VISIBLE
+            btnHistory.visibility = View.VISIBLE
+            layoutInterval.visibility = View.VISIBLE
+            switchBgReport.visibility = View.VISIBLE
         }
     }
 
@@ -482,6 +491,7 @@ class MainActivity : AppCompatActivity() {
                         chartBaseTime = latest.timestamp
                         updateDashboardText(latest, false)
                         updateChartData()
+                        btnShowData.visibility = View.VISIBLE
                     } else {
                         currentRecords = emptyList()
                         lineChart.clear()
@@ -489,10 +499,12 @@ class MainActivity : AppCompatActivity() {
                         tvCurrentCurrent.text = "电流: -- A"
                         tvCurrentPower.text = "功率: -- W"
                         tvCurrentProtocol.text = "电量: --"
+                        btnShowData.visibility = View.GONE
                     }
                     return@collectLatest
                 }
                 currentRecords = records
+                btnShowData.visibility = View.VISIBLE
                 chartBaseTime = records.first().timestamp
 
                 // If no point is selected, update dashboard with the latest record
