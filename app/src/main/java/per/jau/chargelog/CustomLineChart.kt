@@ -12,6 +12,7 @@ import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.highlight.Highlight
+import androidx.core.graphics.toColorInt
 import java.util.Locale
 import kotlin.math.abs
 
@@ -230,9 +231,9 @@ class CustomLineChart @JvmOverloads constructor(
         val nightModeFlags = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
         val isNight = nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES
         val verticalLineColor = if (isNight) {
-            Color.parseColor("#FFC107") // High-contrast amber yellow for dark background
+            "#FFC107".toColorInt() // High-contrast amber yellow for dark background
         } else {
-            Color.parseColor("#212121") // High-contrast charcoal black for light background
+            "#212121".toColorInt() // High-contrast charcoal black for light background
         }
 
         // 1. Draw glowing / 3D vertical line
@@ -324,7 +325,7 @@ class CustomLineChart @JvmOverloads constructor(
         canvas.drawRoundRect(shadowRect, cornerRadius, cornerRadius, tooltipBgPaint)
 
         // Tooltip background
-        tooltipBgPaint.color = Color.parseColor("#E6262626") // Dark mode neutral grey
+        tooltipBgPaint.color = "#E6262626".toColorInt() // Dark mode neutral grey
         canvas.drawRoundRect(rect, cornerRadius, cornerRadius, tooltipBgPaint)
 
         // Tooltip active accent border

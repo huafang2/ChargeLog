@@ -1,30 +1,32 @@
 package per.jau.chargelog
 
 import android.Manifest
-import android.content.Context
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
-import per.jau.chargelog.utils.BatteryUtils
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import androidx.core.content.withStyledAttributes
+import androidx.core.graphics.toColorInt
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
-import com.github.mikephil.charting.charts.LineChart
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.github.mikephil.charting.components.Legend
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.Entry
@@ -33,8 +35,6 @@ import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener
-import androidx.activity.result.contract.ActivityResultContracts
-import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -43,10 +43,12 @@ import kotlinx.coroutines.launch
 import per.jau.chargelog.data.ChargeDatabase
 import per.jau.chargelog.data.ChargeRecord
 import per.jau.chargelog.service.ChargeLoggingService
+import per.jau.chargelog.utils.BatteryUtils
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.time.Duration.Companion.milliseconds
 
 class MainActivity : AppCompatActivity() {
 
@@ -81,6 +83,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedTabIndex = 2
     private var observeJob: Job? = null
     private var liveTextUpdateJob: Job? = null
+    private var lastHighlightedX: Float? = null
     
     // For adaptive text coloring
     private var textColorPrimary: Int = Color.BLACK
@@ -104,6 +107,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @SuppressLint("SetTextI18n")
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -131,14 +135,14 @@ class MainActivity : AppCompatActivity() {
         }
         
         // Resolve theme text color
-        val typedArray = obtainStyledAttributes(intArrayOf(android.R.attr.textColorPrimary))
-        textColorPrimary = typedArray.getColor(0, Color.BLACK)
-        typedArray.recycle()
+        withStyledAttributes(attrs = intArrayOf(android.R.attr.textColorPrimary)) {
+            textColorPrimary = getColor(0, Color.BLACK)
+        }
 
-        val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
-        prefs.edit()
-            .putBoolean("USER_EXITED", true)
-            .apply()
+        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+        prefs.edit {
+            putBoolean("USER_EXITED", true)
+        }
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
 
         lineChart = findViewById(R.id.lineChart)
@@ -166,7 +170,7 @@ class MainActivity : AppCompatActivity() {
         switchBgReport = findViewById(R.id.switchBgReport)
         switchBgReport.isChecked = prefs.getBoolean("ENABLE_BG_REPORT", true)
         switchBgReport.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("ENABLE_BG_REPORT", isChecked).apply()
+            prefs.edit { putBoolean("ENABLE_BG_REPORT", isChecked) }
         }
 
         val tvIntervalLabel = findViewById<TextView>(R.id.tvIntervalLabel)
@@ -175,10 +179,11 @@ class MainActivity : AppCompatActivity() {
         sbInterval.progress = currentInterval - 1
         tvIntervalLabel.text = "采样间隔: ${currentInterval}秒"
         sbInterval.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            @SuppressLint("SetTextI18n")
             override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
                 val sec = progress + 1
                 tvIntervalLabel.text = "采样间隔: ${sec}秒"
-                prefs.edit().putInt("SAMPLING_INTERVAL_SECONDS", sec).apply()
+                prefs.edit { putInt("SAMPLING_INTERVAL_SECONDS", sec) }
             }
             override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
@@ -196,10 +201,10 @@ class MainActivity : AppCompatActivity() {
         handleIntent(intent)
 
         btnStart.setOnClickListener {
-            getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean("IS_RECORDING", true)
-                .apply()
+            getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+                .edit {
+                    putBoolean("IS_RECORDING", true)
+                }
             // Make sure service is running
             startForegroundService(Intent(this, ChargeLoggingService::class.java))
             tvStatus.text = "正在记录充电数据..."
@@ -207,22 +212,22 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnStop.setOnClickListener {
-            getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean("IS_RECORDING", false)
-                .putBoolean("FORCE_NEW_SESSION", true)
-                .apply()
+            getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+                .edit {
+                    putBoolean("IS_RECORDING", false)
+                        .putBoolean("FORCE_NEW_SESSION", true)
+                }
             tvStatus.text = "充电日志已停止"
             updateButtonStates()
         }
 
         btnExit.setOnClickListener {
-            getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean("IS_RECORDING", false)
-                .putBoolean("FORCE_NEW_SESSION", true)
-                .putBoolean("USER_EXITED", true)
-                .apply()
+            getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+                .edit {
+                    putBoolean("IS_RECORDING", false)
+                        .putBoolean("FORCE_NEW_SESSION", true)
+                        .putBoolean("USER_EXITED", true)
+                }
             stopService(Intent(this, ChargeLoggingService::class.java))
             finishAffinity()
         }
@@ -238,18 +243,18 @@ class MainActivity : AppCompatActivity() {
 
         btnClear.setOnClickListener {
             val isRecording = isRecording()
-            val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
+            val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
             val sessionStart = prefs.getLong("CURRENT_SESSION_START", 0L)
             if (isRecording) {
-                androidx.appcompat.app.AlertDialog.Builder(this)
+                AlertDialog.Builder(this)
                     .setTitle("提示")
                     .setMessage("当前正在记录充电日志。清空屏幕将停止当前记录，且本次记录的数据将会被丢弃（不保存到历史记录）。确认继续吗？")
                     .setPositiveButton("确认清空") { _, _ ->
                         lifecycleScope.launch {
                             // 1. Stop recording
-                            prefs.edit()
-                                .putBoolean("IS_RECORDING", false)
-                                .apply()
+                            prefs.edit {
+                                putBoolean("IS_RECORDING", false)
+                            }
                             tvStatus.text = "充电日志已停止"
                             updateButtonStates()
                             
@@ -261,10 +266,10 @@ class MainActivity : AppCompatActivity() {
                             
                             // 3. Reset CURRENT_SESSION_START to now
                             val now = System.currentTimeMillis()
-                            prefs.edit()
-                                .putLong("CURRENT_SESSION_START", now)
-                                .putBoolean("FORCE_NEW_SESSION", true)
-                                .apply()
+                            prefs.edit {
+                                putLong("CURRENT_SESSION_START", now)
+                                    .putBoolean("FORCE_NEW_SESSION", true)
+                            }
                         }
                     }
                     .setNegativeButton("取消", null)
@@ -272,10 +277,10 @@ class MainActivity : AppCompatActivity() {
             } else {
                 // Not recording: clear screen immediately without dialog, no database deletion
                 val now = System.currentTimeMillis()
-                prefs.edit()
-                    .putLong("CURRENT_SESSION_START", now)
-                    .putBoolean("FORCE_NEW_SESSION", true)
-                    .apply()
+                prefs.edit {
+                    putLong("CURRENT_SESSION_START", now)
+                        .putBoolean("FORCE_NEW_SESSION", true)
+                }
             }
         }
 
@@ -404,17 +409,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun isServiceRunning(): Boolean {
-        val manager = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-        @Suppress("DEPRECATION")
-        for (service in manager.getRunningServices(Int.MAX_VALUE)) {
-            if (ChargeLoggingService::class.java.name == service.service.className) {
-                return true
-            }
-        }
-        return false
-    }
-
     private fun setupTabs() {
         tabLayout.addTab(tabLayout.newTab().setText("电压"))
         tabLayout.addTab(tabLayout.newTab().setText("电流"))
@@ -462,6 +456,17 @@ class MainActivity : AppCompatActivity() {
         lineChart.setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
             override fun onValueSelected(e: Entry?, h: Highlight?) {
                 if (e != null && currentRecords.isNotEmpty()) {
+                    if (lastHighlightedX != null && lastHighlightedX == e.x && !isDraggingScrubber) {
+                        // User tapped the already highlighted point: deselect
+                        lastHighlightedX = null
+                        lineChart.post {
+                            lineChart.highlightValue(null, true)
+                        }
+                        return
+                    }
+                    
+                    lastHighlightedX = e.x
+
                     // Find the closest record
                     val targetTime = chartBaseTime + e.x.toLong()
                     val index = currentRecords.indices.minByOrNull { abs(currentRecords[it].timestamp - targetTime) } ?: -1
@@ -477,11 +482,50 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onNothingSelected() {
+                lastHighlightedX = null
                 if (currentRecords.isNotEmpty()) {
-                    updateDashboardText(currentRecords.last(), false)
+                    val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
+                    if (historySessionId != -1L) {
+                        updateDashboardWithExtremeValues()
+                    } else {
+                        updateDashboardText(currentRecords.last(), false)
+                    }
                 }
             }
         })
+
+        // Tap vertical line to deselect
+        lineChart.onChartGestureListener = object : com.github.mikephil.charting.listener.OnChartGestureListener {
+            override fun onChartGestureStart(me: android.view.MotionEvent?, lastGesture: com.github.mikephil.charting.listener.ChartTouchListener.ChartGesture?) {}
+            override fun onChartGestureEnd(me: android.view.MotionEvent?, lastGesture: com.github.mikephil.charting.listener.ChartTouchListener.ChartGesture?) {}
+            override fun onChartLongPressed(me: android.view.MotionEvent?) {}
+            override fun onChartDoubleTapped(me: android.view.MotionEvent?) {}
+            
+            override fun onChartSingleTapped(me: android.view.MotionEvent?) {
+                if (me == null) return
+                val xVal = lastHighlightedX ?: return
+                val data = lineChart.data ?: return
+                // Find the first dataset that is not empty
+                val dataSet = data.dataSets.firstOrNull { it.entryCount > 0 } ?: return
+                val trans = lineChart.getTransformer(dataSet.axisDependency)
+                val pts = floatArrayOf(xVal, 0f)
+                trans.pointValuesToPixel(pts)
+                val pixelX = pts[0]
+                
+                val density = resources.displayMetrics.density
+                val tolerance = 25f * density // 25 dp
+                
+                if (abs(me.x - pixelX) < tolerance) {
+                    lineChart.post {
+                        lineChart.highlightValue(null, true)
+                    }
+                }
+            }
+            
+            override fun onChartFling(me1: android.view.MotionEvent?, me2: android.view.MotionEvent?, velocityX: Float, velocityY: Float) {}
+            override fun onChartScale(me: android.view.MotionEvent?, scaleX: Float, scaleY: Float) {}
+            override fun onChartTranslate(me: android.view.MotionEvent?, dX: Float, dY: Float) {}
+        }
     }
 
     private var isDraggingScrubber = false
@@ -497,7 +541,7 @@ class MainActivity : AppCompatActivity() {
                     lineChart.highlightValue(highlight, true)
                     
                     // Center the chart on the highlighted point if zoomed
-                    lineChart.centerViewToAnimated(x, lineChart.centerOfView.y, lineChart.data.getDataSetByIndex(0).getAxisDependency(), 100)
+                    lineChart.centerViewToAnimated(x, lineChart.centerOfView.y, lineChart.data.getDataSetByIndex(0).axisDependency, 100)
                 }
             }
             override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {
@@ -517,7 +561,7 @@ class MainActivity : AppCompatActivity() {
             val targetSessionId = if (sessionId != -1L) {
                 sessionId
             } else {
-                val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
+                val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
                 prefs.getLong("CURRENT_SESSION_START", System.currentTimeMillis())
             }
             val flow = dao.getRecordsBySession(targetSessionId)
@@ -534,6 +578,7 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         currentRecords = emptyList()
                         lineChart.clear()
+                        resetDashboardTextSize()
                         tvCurrentVoltage.text = "电压: -- V"
                         tvCurrentCurrent.text = "电流: -- A"
                         tvCurrentPower.text = "功率: -- W"
@@ -554,11 +599,15 @@ class MainActivity : AppCompatActivity() {
                     sbChartScrubber.visibility = View.GONE
                 }
 
-                // If no point is selected, update dashboard with the latest record
+                // If no point is selected, update dashboard with the latest record or extreme values
                 if (lineChart.highlighted?.isNotEmpty() == true) {
                     // Let the selection listener handle the text
                 } else {
-                    updateDashboardText(records.last(), false)
+                    if (sessionId != -1L) {
+                        updateDashboardWithExtremeValues()
+                    } else {
+                        updateDashboardText(records.last(), false)
+                    }
                 }
 
                 updateChartData()
@@ -590,12 +639,102 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun resetDashboardTextSize() {
+        tvCurrentVoltage.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 20f)
+        tvCurrentCurrent.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 20f)
+        tvCurrentPower.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 20f)
+        tvCurrentProtocol.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
+    }
+
+    private fun updateStatusTitle(isSelected: Boolean) {
+        val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
+        val baseTitle = if (historySessionId != -1L) {
+            "查看历史记录"
+        } else {
+            if (isRecording()) "正在记录充电数据..." else "充电日志已停止"
+        }
+        
+        if (isSelected) {
+            val spannable = android.text.SpannableStringBuilder(baseTitle)
+            spannable.append("  ") // Two spaces: one for spacing, one as target for the ImageSpan
+            val start = baseTitle.length + 1
+            
+            val drawable = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.ic_selected_pin)
+            if (drawable != null) {
+                val sizePx = (22 * resources.displayMetrics.density).toInt()
+                drawable.setBounds(0, 0, sizePx, sizePx)
+                val imageSpan = android.text.style.ImageSpan(drawable, android.text.style.ImageSpan.ALIGN_CENTER)
+                spannable.setSpan(
+                    imageSpan,
+                    start,
+                    start + 1,
+                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+            tvStatus.text = spannable
+        } else {
+            tvStatus.text = baseTitle
+        }
+    }
+
     private fun updateDashboardText(record: ChargeRecord, isHistorical: Boolean) {
-        val prefix = if (isHistorical) "[选中] " else ""
-        tvCurrentVoltage.text = String.format(Locale.getDefault(), "${prefix}电压: %.2f V", record.voltage)
-        tvCurrentCurrent.text = String.format(Locale.getDefault(), "${prefix}电流: %.2f A", record.current)
-        tvCurrentPower.text = String.format(Locale.getDefault(), "${prefix}功率: %.2f W", record.power)
-        tvCurrentProtocol.text = String.format(Locale.getDefault(), "${prefix}电量: %d%%", record.batteryLevel)
+        resetDashboardTextSize()
+        updateStatusTitle(isHistorical)
+        tvCurrentVoltage.text = String.format(Locale.getDefault(), "电压: %.2f V", record.voltage)
+        tvCurrentCurrent.text = String.format(Locale.getDefault(), "电流: %.2f A", record.current)
+        tvCurrentPower.text = String.format(Locale.getDefault(), "功率: %.2f W", record.power)
+        tvCurrentProtocol.text = String.format(Locale.getDefault(), "电量: %d%%", record.batteryLevel)
+    }
+
+    private fun updateDashboardWithExtremeValues() {
+        if (currentRecords.isEmpty()) return
+        
+        val voltages = currentRecords.map { it.voltage }
+        val currents = currentRecords.map { it.current }
+        val powers = currentRecords.map { it.power }
+        val batteryLevels = currentRecords.map { it.batteryLevel }
+        
+        val minV = voltages.minOrNull() ?: 0f
+        val maxV = voltages.maxOrNull() ?: 0f
+        
+        val minC = currents.minOrNull() ?: 0f
+        val maxC = currents.maxOrNull() ?: 0f
+        
+        val minP = powers.minOrNull() ?: 0f
+        val maxP = powers.maxOrNull() ?: 0f
+        
+        val startBat = batteryLevels.firstOrNull() ?: 0
+        val endBat = batteryLevels.lastOrNull() ?: 0
+        val batChange = endBat - startBat
+        val changeSign = if (batChange >= 0) "+$batChange%" else "$batChange%"
+        
+        resetDashboardTextSize()
+        updateStatusTitle(false)
+
+        val valV = String.format(Locale.getDefault(), "%.2f ~ %.2f V", minV, maxV)
+        val valC = String.format(Locale.getDefault(), "%.2f ~ %.2f A", minC, maxC)
+        val valP = String.format(Locale.getDefault(), "%.2f ~ %.2f W", minP, maxP)
+        val valB = "$startBat% -> $endBat% ($changeSign)"
+
+        tvCurrentVoltage.text = formatExtremeValueText("电压: ", valV)
+        tvCurrentCurrent.text = formatExtremeValueText("电流: ", valC)
+        tvCurrentPower.text = formatExtremeValueText("功率: ", valP)
+        tvCurrentProtocol.text = formatExtremeValueText("电量: ", valB)
+    }
+
+    private fun formatExtremeValueText(label: String, value: String): android.text.SpannableString {
+        val fullText = "$label$value"
+        val spannable = android.text.SpannableString(fullText)
+        val density = resources.displayMetrics.density
+        val valuePx = (14f * density).toInt()
+        
+        spannable.setSpan(
+            android.text.style.AbsoluteSizeSpan(valuePx),
+            label.length,
+            fullText.length,
+            android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        return spannable
     }
 
     private fun createLineDataSet(entries: List<Entry>, label: String, color: Int): LineDataSet {
@@ -630,43 +769,47 @@ class MainActivity : AppCompatActivity() {
             }
             val isDischarging = record.current < 0
 
-            if (isSegmentDischarging == null) {
-                isSegmentDischarging = isDischarging
-                currentSegment.add(Entry(x, y))
-            } else if (isSegmentDischarging == isDischarging) {
-                currentSegment.add(Entry(x, y))
-            } else {
-                // Bridge point to make lines continuous
-                currentSegment.add(Entry(x, y))
-
-                val color = when (selectedTabIndex) {
-                    0 -> Color.RED
-                    1 -> Color.parseColor("#4488FF")
-                    2 -> if (isSegmentDischarging) Color.parseColor("#4488FF") else Color.GREEN
-                    else -> Color.parseColor("#FF9800")
+            when (isSegmentDischarging) {
+                null -> {
+                    isSegmentDischarging = isDischarging
+                    currentSegment.add(Entry(x, y))
                 }
-                
-                val label = if (dataSets.isEmpty()) {
-                    when (selectedTabIndex) {
-                        0 -> "电压 (V)"
-                        1 -> "电流 (A)"
-                        2 -> "功率 (W)"
-                        else -> "电量 (%)"
+                isDischarging -> {
+                    currentSegment.add(Entry(x, y))
+                }
+                else -> {
+                    // Bridge point to make lines continuous
+                    currentSegment.add(Entry(x, y))
+
+                    val color = when (selectedTabIndex) {
+                        0 -> Color.RED
+                        1 -> "#4488FF".toColorInt()
+                        2 -> if (isSegmentDischarging) "#4488FF".toColorInt() else Color.GREEN
+                        else -> "#FF9800".toColorInt()
                     }
-                } else {
-                    ""
-                }
 
-                val dataSet = createLineDataSet(currentSegment, label, color)
-                if (dataSets.isNotEmpty()) {
-                    dataSet.form = Legend.LegendForm.NONE
-                }
-                dataSets.add(dataSet)
+                    val label = if (dataSets.isEmpty()) {
+                        when (selectedTabIndex) {
+                            0 -> "电压 (V)"
+                            1 -> "电流 (A)"
+                            2 -> "功率 (W)"
+                            else -> "电量 (%)"
+                        }
+                    } else {
+                        ""
+                    }
 
-                // Start new segment
-                currentSegment = ArrayList()
-                currentSegment.add(Entry(x, y))
-                isSegmentDischarging = isDischarging
+                    val dataSet = createLineDataSet(currentSegment, label, color)
+                    if (dataSets.isNotEmpty()) {
+                        dataSet.form = Legend.LegendForm.NONE
+                    }
+                    dataSets.add(dataSet)
+
+                    // Start new segment
+                    currentSegment = ArrayList()
+                    currentSegment.add(Entry(x, y))
+                    isSegmentDischarging = isDischarging
+                }
             }
         }
 
@@ -674,9 +817,9 @@ class MainActivity : AppCompatActivity() {
         if (currentSegment.isNotEmpty() && isSegmentDischarging != null) {
             val color = when (selectedTabIndex) {
                 0 -> Color.RED
-                1 -> Color.parseColor("#4488FF")
-                2 -> if (isSegmentDischarging) Color.parseColor("#4488FF") else Color.GREEN
-                else -> Color.parseColor("#FF9800")
+                1 -> "#4488FF".toColorInt()
+                2 -> if (isSegmentDischarging) "#4488FF".toColorInt() else Color.GREEN
+                else -> "#FF9800".toColorInt()
             }
             
             val label = if (dataSets.isEmpty()) {
@@ -707,14 +850,14 @@ class MainActivity : AppCompatActivity() {
         startLiveTextUpdateLoop()
 
         // Check and report background stats when returning to the foreground
-        val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
         val userExited = prefs.getBoolean("USER_EXITED", false)
         if (userExited) {
-            prefs.edit()
-                .putBoolean("USER_EXITED", false)
-                .putBoolean("APP_IN_BACKGROUND", false)
-                .putBoolean("BG_STATS_RECORDED", false)
-                .apply()
+            prefs.edit {
+                putBoolean("USER_EXITED", false)
+                    .putBoolean("APP_IN_BACKGROUND", false)
+                    .putBoolean("BG_STATS_RECORDED", false)
+            }
             return
         }
 
@@ -724,10 +867,10 @@ class MainActivity : AppCompatActivity() {
         
         if (enableBgReport && appInBackground && bgStatsRecorded) {
             // Reset flags immediately
-            prefs.edit()
-                .putBoolean("APP_IN_BACKGROUND", false)
-                .putBoolean("BG_STATS_RECORDED", false)
-                .apply()
+            prefs.edit {
+                putBoolean("APP_IN_BACKGROUND", false)
+                    .putBoolean("BG_STATS_RECORDED", false)
+            }
             
             val startTime = prefs.getLong("BACKGROUND_START_TIME", 0L)
             val startBattery = prefs.getInt("BACKGROUND_START_BATTERY", -1)
@@ -764,29 +907,29 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             // Just clear flags if not showing report
-            prefs.edit()
-                .putBoolean("APP_IN_BACKGROUND", false)
-                .putBoolean("BG_STATS_RECORDED", false)
-                .apply()
+            prefs.edit {
+                putBoolean("APP_IN_BACKGROUND", false)
+                    .putBoolean("BG_STATS_RECORDED", false)
+            }
         }
     }
 
     override fun onStop() {
         super.onStop()
         // Save initial background state when activity goes to background (including screen lock)
-        val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
         val currentBattery = BatteryUtils.getBatteryLevel(this)
-        prefs.edit()
-            .putBoolean("APP_IN_BACKGROUND", true)
-            .putBoolean("BG_STATS_RECORDED", false)
-            .putLong("BACKGROUND_START_TIME", System.currentTimeMillis())
-            .putInt("BACKGROUND_START_BATTERY", currentBattery)
-            // Power
-            .putFloat("BG_MIN_CHARGE_POWER", Float.MAX_VALUE)
-            .putFloat("BG_MAX_CHARGE_POWER", -Float.MAX_VALUE)
-            .putFloat("BG_MIN_DISCHARGE_POWER", Float.MAX_VALUE)
-            .putFloat("BG_MAX_DISCHARGE_POWER", -Float.MAX_VALUE)
-            .apply()
+        prefs.edit {
+            putBoolean("APP_IN_BACKGROUND", true)
+                .putBoolean("BG_STATS_RECORDED", false)
+                .putLong("BACKGROUND_START_TIME", System.currentTimeMillis())
+                .putInt("BACKGROUND_START_BATTERY", currentBattery)
+                // Power
+                .putFloat("BG_MIN_CHARGE_POWER", Float.MAX_VALUE)
+                .putFloat("BG_MAX_CHARGE_POWER", -Float.MAX_VALUE)
+                .putFloat("BG_MIN_DISCHARGE_POWER", Float.MAX_VALUE)
+                .putFloat("BG_MAX_DISCHARGE_POWER", -Float.MAX_VALUE)
+        }
     }
 
     private fun showBackgroundStatsDialog(
@@ -839,7 +982,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isRecording(): Boolean {
-        val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
         return prefs.getBoolean("IS_RECORDING", false)
     }
 
@@ -859,6 +1002,7 @@ class MainActivity : AppCompatActivity() {
                             val power = voltage * current
                             val batteryLevel = BatteryUtils.getBatteryLevel(this@MainActivity)
                             
+                            resetDashboardTextSize()
                             tvCurrentVoltage.text = String.format(Locale.getDefault(), "电压: %.2f V", voltage)
                             tvCurrentCurrent.text = String.format(Locale.getDefault(), "电流: %.2f A", current)
                             tvCurrentPower.text = String.format(Locale.getDefault(), "功率: %.2f W", power)
@@ -866,7 +1010,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
-                kotlinx.coroutines.delay(1000L)
+                kotlinx.coroutines.delay(1000L.milliseconds)
             }
         }
     }
@@ -924,10 +1068,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
         prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
         if (isFinishing) {
-            prefs.edit().putBoolean("USER_EXITED", true).apply()
+            prefs.edit { putBoolean("USER_EXITED", true) }
         }
         super.onDestroy()
     }
@@ -941,6 +1085,7 @@ class RawDataAdapter(private val records: List<ChargeRecord>) : RecyclerView.Ada
         return ViewHolder(view)
     }
 
+    @SuppressLint("SetTextI18n")
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val record = records[position]
         holder.tvRawTime.text = format.format(Date(record.timestamp))
