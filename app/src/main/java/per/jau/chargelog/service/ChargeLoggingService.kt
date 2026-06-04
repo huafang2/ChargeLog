@@ -1,6 +1,5 @@
 package per.jau.chargelog.service
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -9,8 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
-import android.os.Build
-import android.os.Bundle
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
@@ -25,6 +22,8 @@ import per.jau.chargelog.data.ChargeRecord
 import per.jau.chargelog.utils.BatteryUtils
 import java.util.Locale
 import kotlin.math.abs
+import androidx.core.content.edit
+import kotlin.time.Duration.Companion.milliseconds
 
 class ChargeLoggingService : Service() {
 
@@ -64,40 +63,16 @@ class ChargeLoggingService : Service() {
         startForeground(NOTIFICATION_ID, notification)
 
         // Initialize session start time in SharedPreferences
-        val db = ChargeDatabase.getDatabase(this)
-        scope.launch {
-            val latest = db.chargeDao().getLatestRecord()
+        val launch = scope.launch {
             val now = System.currentTimeMillis()
             val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
-            val existingStart = prefs.getLong("CURRENT_SESSION_START", 0L)
-            val forceNew = prefs.getBoolean("FORCE_NEW_SESSION", false)
-            
-            val sessionStart = if (!forceNew && latest != null && (now - latest.timestamp) < 5 * 60 * 1000) {
-                if (existingStart > 0L && existingStart <= latest.timestamp) {
-                    existingStart
-                } else {
-                    latest.timestamp
-                }
-            } else {
-                now
-            }
-            prefs.edit()
-                .putLong("CURRENT_SESSION_START", sessionStart)
-                .putBoolean("FORCE_NEW_SESSION", false)
-                .apply()
-        }
-        
-        startLoggingLoop()
-    }
 
-    private fun updateWakeLock(isRecording: Boolean) {
-        try {
-            if (!isRecording && wakeLock.isHeld) {
-                wakeLock.release()
+            prefs.edit {
+                ->
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
+
+        startLoggingLoop()
     }
 
     private fun triggerImmediateNotificationUpdate(isRecording: Boolean) {
@@ -140,7 +115,7 @@ class ChargeLoggingService : Service() {
 
                         if (charging) {
                             if (!wakeLock.isHeld) {
-                                wakeLock.acquire()
+                                wakeLock.acquire(10*60*1000L /*10 minutes*/)
                             }
                         } else {
                             if (wakeLock.isHeld) {
@@ -156,7 +131,7 @@ class ChargeLoggingService : Service() {
                         var latestBatteryLevel = -1
 
                         // Sample 5 times over 500ms to compute average
-                        for (i in 0 until 5) {
+                        (0..<5).forEach { i ->
                             val sampleFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
                             val sampleStatus = registerReceiver(null, sampleFilter)
                             if (sampleStatus != null) {
@@ -165,13 +140,13 @@ class ChargeLoggingService : Service() {
                                 sumVoltage += voltage
                                 sumCurrent += current
                                 count++
-                                
+
                                 val batLevel = BatteryUtils.getBatteryLevel(this@ChargeLoggingService, sampleStatus)
                                 if (batLevel >= 0) {
                                     latestBatteryLevel = batLevel
                                 }
                             }
-                            kotlinx.coroutines.delay(100L)
+                            kotlinx.coroutines.delay(100L.milliseconds)
                         }
 
                         if (count > 0) {
@@ -187,7 +162,8 @@ class ChargeLoggingService : Service() {
                                 voltage = avgVoltage,
                                 current = avgCurrent,
                                 power = avgPower,
-                                batteryLevel = latestBatteryLevel
+                                batteryLevel = latestBatteryLevel,
+                                screenState = if (isInteractive) 1 else 0
                             )
 
                             db.chargeDao().insert(record)
@@ -195,11 +171,16 @@ class ChargeLoggingService : Service() {
                             // Throttled notification update: only update if screen is on, or battery level changes, or every 10 samples
                             val lastNotificationLevel = prefs.getInt("LAST_NOTIFICATION_BATTERY_LEVEL", -1)
                             val sampleCount = prefs.getInt("BG_SAMPLE_COUNT", 0) + 1
-                            prefs.edit().putInt("BG_SAMPLE_COUNT", sampleCount).apply()
+                            prefs.edit { putInt("BG_SAMPLE_COUNT", sampleCount) }
 
                             if (isInteractive || latestBatteryLevel != lastNotificationLevel || sampleCount % 10 == 0) {
                                 updateNotification(avgVoltage, avgCurrent, avgPower, latestBatteryLevel, isRecording = true)
-                                prefs.edit().putInt("LAST_NOTIFICATION_BATTERY_LEVEL", latestBatteryLevel).apply()
+                                prefs.edit {
+                                    putInt(
+                                        "LAST_NOTIFICATION_BATTERY_LEVEL",
+                                        latestBatteryLevel
+                                    )
+                                }
                             }
                             
                             updateBackgroundPowerStats(prefs, avgPower)
@@ -210,7 +191,7 @@ class ChargeLoggingService : Service() {
                         }
 
                         val delayMs = maxOf(100L, (activeInterval * 1000L) - 500L)
-                        kotlinx.coroutines.delay(delayMs)
+                        kotlinx.coroutines.delay(delayMs.milliseconds)
                     } else {
                         if (wakeLock.isHeld) {
                             wakeLock.release()
@@ -227,7 +208,7 @@ class ChargeLoggingService : Service() {
                                 updateNotification(voltage, current, power, batteryLevel, isRecording = false)
                                 updateBackgroundPowerStats(prefs, power)
                             }
-                            kotlinx.coroutines.delay(5000L)
+                            kotlinx.coroutines.delay(5000L.milliseconds)
                         } else {
                             // Screen off & not recording: sleep 30s to conserve battery, no notification updates
                             val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
@@ -238,12 +219,12 @@ class ChargeLoggingService : Service() {
                                 val power = voltage * current
                                 updateBackgroundPowerStats(prefs, power)
                             }
-                            kotlinx.coroutines.delay(30000L)
+                            kotlinx.coroutines.delay(30000L.milliseconds)
                         }
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
-                    kotlinx.coroutines.delay(5000L)
+                    kotlinx.coroutines.delay(5000L.milliseconds)
                 }
             }
         }
@@ -331,28 +312,28 @@ class ChargeLoggingService : Service() {
         when (intent?.action) {
             ACTION_START_RECORDING -> {
                 val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
-                prefs.edit()
-                    .putBoolean("IS_RECORDING", true)
-                    .apply()
+                prefs.edit {
+                    putBoolean("IS_RECORDING", true)
+                }
                 triggerImmediateNotificationUpdate(true)
                 startLoggingLoop()
             }
             ACTION_STOP_RECORDING -> {
                 val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
-                prefs.edit()
-                    .putBoolean("IS_RECORDING", false)
-                    .putBoolean("FORCE_NEW_SESSION", true)
-                    .apply()
+                prefs.edit {
+                    putBoolean("IS_RECORDING", false)
+                        .putBoolean("FORCE_NEW_SESSION", true)
+                }
                 triggerImmediateNotificationUpdate(false)
                 startLoggingLoop()
             }
             ACTION_EXIT_APP -> {
                 val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
-                prefs.edit()
-                    .putBoolean("IS_RECORDING", false)
-                    .putBoolean("FORCE_NEW_SESSION", true)
-                    .putBoolean("USER_EXITED", true)
-                    .apply()
+                prefs.edit {
+                    putBoolean("IS_RECORDING", false)
+                        .putBoolean("FORCE_NEW_SESSION", true)
+                        .putBoolean("USER_EXITED", true)
+                }
                 stopSelf()
                 android.os.Process.killProcess(android.os.Process.myPid())
             }
@@ -386,27 +367,28 @@ class ChargeLoggingService : Service() {
     private fun updateBackgroundPowerStats(prefs: android.content.SharedPreferences, currentPower: Float) {
         val appInBackground = prefs.getBoolean("APP_IN_BACKGROUND", false)
         if (appInBackground) {
-            val edit = prefs.edit()
-            if (currentPower >= 0) {
-                // Charging power range
-                val minP = prefs.getFloat("BG_MIN_CHARGE_POWER", Float.MAX_VALUE)
-                val maxP = prefs.getFloat("BG_MAX_CHARGE_POWER", -Float.MAX_VALUE)
-                val newMinP = if (currentPower < minP) currentPower else minP
-                val newMaxP = if (currentPower > maxP) currentPower else maxP
-                edit.putFloat("BG_MIN_CHARGE_POWER", newMinP)
-                edit.putFloat("BG_MAX_CHARGE_POWER", newMaxP)
-            } else {
-                // Discharging power range (use absolute value)
-                val absP = abs(currentPower)
-                val minP = prefs.getFloat("BG_MIN_DISCHARGE_POWER", Float.MAX_VALUE)
-                val maxP = prefs.getFloat("BG_MAX_DISCHARGE_POWER", -Float.MAX_VALUE)
-                val newMinP = if (absP < minP) absP else minP
-                val newMaxP = if (absP > maxP) absP else maxP
-                edit.putFloat("BG_MIN_DISCHARGE_POWER", newMinP)
-                edit.putFloat("BG_MAX_DISCHARGE_POWER", newMaxP)
+            prefs.edit {
+                if (currentPower >= 0) {
+                    // Charging power range
+                    val minP = prefs.getFloat("BG_MIN_CHARGE_POWER", Float.MAX_VALUE)
+                    val maxP = prefs.getFloat("BG_MAX_CHARGE_POWER", -Float.MAX_VALUE)
+                    val newMinP = if (currentPower < minP) currentPower else minP
+                    val newMaxP = if (currentPower > maxP) currentPower else maxP
+                    putFloat("BG_MIN_CHARGE_POWER", newMinP)
+                    putFloat("BG_MAX_CHARGE_POWER", newMaxP)
+                } else {
+                    // Discharging power range (use absolute value)
+                    val absP = abs(currentPower)
+                    val minP = prefs.getFloat("BG_MIN_DISCHARGE_POWER", Float.MAX_VALUE)
+                    val maxP = prefs.getFloat("BG_MAX_DISCHARGE_POWER", -Float.MAX_VALUE)
+                    val newMinP = if (absP < minP) absP else minP
+                    val newMaxP = if (absP > maxP) absP else maxP
+                    putFloat("BG_MIN_DISCHARGE_POWER", newMinP)
+                    putFloat("BG_MAX_DISCHARGE_POWER", newMaxP)
+                }
+
+                putBoolean("BG_STATS_RECORDED", true)
             }
-            
-            edit.putBoolean("BG_STATS_RECORDED", true).apply()
         }
     }
 

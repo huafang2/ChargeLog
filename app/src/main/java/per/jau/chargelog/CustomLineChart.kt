@@ -22,8 +22,11 @@ class CustomLineChart @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : LineChart(context, attrs, defStyleAttr) {
 
-    private var isDraggingVerticalLine = false
+    var isDraggingVerticalLine = false
     private val touchTolerance = 35f * resources.displayMetrics.density // 35dp hit area for dragging
+    private var startX = 0f
+    private var startY = 0f
+    private var hasMoved = false
 
     // Drawing paints
     private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -41,6 +44,9 @@ class CustomLineChart @JvmOverloads constructor(
     private val tooltipBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 1f * resources.displayMetrics.density
+    }
+    private val bandPaint = Paint().apply {
+        style = Paint.Style.FILL
     }
 
     override fun setData(data: LineData?) {
@@ -70,6 +76,9 @@ class CustomLineChart @JvmOverloads constructor(
 
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
+                startX = event.x
+                startY = event.y
+                hasMoved = false
                 if (currentHighlight != null) {
                     val chartData = data
                     if (chartData != null) {
@@ -95,6 +104,11 @@ class CustomLineChart @JvmOverloads constructor(
                 setLineActiveState(true)
             }
             MotionEvent.ACTION_MOVE -> {
+                val density = resources.displayMetrics.density
+                val slop = 8f * density
+                if (abs(event.x - startX) > slop || abs(event.y - startY) > slop) {
+                    hasMoved = true
+                }
                 if (isDraggingVerticalLine) {
                     updateHighlightForTouch(event.x, event.y)
                     invalidate()
@@ -105,6 +119,10 @@ class CustomLineChart @JvmOverloads constructor(
                 if (isDraggingVerticalLine) {
                     isDraggingVerticalLine = false
                     isDragEnabled = true
+                    if (event.action == MotionEvent.ACTION_UP && !hasMoved) {
+                        // User tapped the vertical line without dragging: deselect it
+                        highlightValue(null, true)
+                    }
                     invalidate()
                     return true
                 }
@@ -199,6 +217,7 @@ class CustomLineChart @JvmOverloads constructor(
     }
 
     override fun onDraw(canvas: Canvas) {
+        drawScreenOffBands(canvas)
         super.onDraw(canvas)
         drawCustomHighlight(canvas)
     }
@@ -346,5 +365,69 @@ class CustomLineChart @JvmOverloads constructor(
             label.contains("电量") -> String.format(Locale.getDefault(), "%.0f%%", value)
             else -> String.format(Locale.getDefault(), "%.2f", value)
         }
+    }
+
+    private fun drawScreenOffBands(canvas: Canvas) {
+        val chartData = data ?: return
+        if (chartData.dataSetCount == 0) return
+        val dataSet = chartData.getDataSetByIndex(0) ?: return
+        val entryCount = dataSet.entryCount
+        if (entryCount < 2) return
+
+        val nightModeFlags = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        val isNight = nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES
+
+        bandPaint.color = if (isNight) {
+            Color.argb(22, 255, 255, 255)
+        } else {
+            Color.argb(22, 0, 0, 0)
+        }
+
+        val trans = getTransformer(dataSet.axisDependency)
+        val top = viewPortHandler.contentTop()
+        val bottom = viewPortHandler.contentBottom()
+
+        val saveId = canvas.save()
+        canvas.clipRect(viewPortHandler.contentRect)
+
+        var i = 0
+        while (i < entryCount - 1) {
+            val entry = dataSet.getEntryForIndex(i)
+            if (entry == null) {
+                i++
+                continue
+            }
+            val screenOn = getScreenOnState(entry)
+            if (!screenOn) {
+                val startX = entry.x
+                var nextEntry = dataSet.getEntryForIndex(i + 1)
+                while (nextEntry != null && !getScreenOnState(nextEntry) && i < entryCount - 2) {
+                    i++
+                    nextEntry = dataSet.getEntryForIndex(i + 1)
+                }
+                val endX = nextEntry?.x ?: startX
+
+                val ptsStart = floatArrayOf(startX, 0f)
+                val ptsEnd = floatArrayOf(endX, 0f)
+                trans.pointValuesToPixel(ptsStart)
+                trans.pointValuesToPixel(ptsEnd)
+
+                val left = ptsStart[0]
+                val right = ptsEnd[0]
+
+                canvas.drawRect(left, top, right, bottom, bandPaint)
+            }
+            i++
+        }
+
+        canvas.restoreToCount(saveId)
+    }
+
+    private fun getScreenOnState(entry: Entry): Boolean {
+        val d = entry.data
+        if (d is per.jau.chargelog.data.ChargeRecord) {
+            return d.screenState != 0
+        }
+        return true
     }
 }

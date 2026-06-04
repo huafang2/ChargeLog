@@ -109,6 +109,9 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetTextI18n")
     override fun onCreate(savedInstanceState: Bundle?) {
+        val themePrefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+        val currentTheme = themePrefs.getInt("THEME_MODE", 0)
+
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -172,6 +175,7 @@ class MainActivity : AppCompatActivity() {
         switchBgReport.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit { putBoolean("ENABLE_BG_REPORT", isChecked) }
         }
+
 
         val tvIntervalLabel = findViewById<TextView>(R.id.tvIntervalLabel)
         val sbInterval = findViewById<android.widget.SeekBar>(R.id.sbInterval)
@@ -456,7 +460,7 @@ class MainActivity : AppCompatActivity() {
         lineChart.setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
             override fun onValueSelected(e: Entry?, h: Highlight?) {
                 if (e != null && currentRecords.isNotEmpty()) {
-                    if (lastHighlightedX != null && lastHighlightedX == e.x && !isDraggingScrubber) {
+                    if (lastHighlightedX != null && lastHighlightedX == e.x && !isDraggingScrubber && !lineChart.isDraggingVerticalLine) {
                         // User tapped the already highlighted point: deselect
                         lastHighlightedX = null
                         lineChart.post {
@@ -625,7 +629,7 @@ class MainActivity : AppCompatActivity() {
                     // Only auto-scroll to end if not currently scrubbing or selecting a point
                     if (!isDraggingScrubber && lineChart.highlighted.isNullOrEmpty()) {
                         if (durationFloat > fifteenMins) {
-                            lineChart.moveViewToX(durationFloat - fifteenMins)
+                            lineChart.moveViewToX(/* xvalue = */ durationFloat - fifteenMins)
                         } else {
                             lineChart.moveViewToX(0f)
                         }
@@ -772,14 +776,14 @@ class MainActivity : AppCompatActivity() {
             when (isSegmentDischarging) {
                 null -> {
                     isSegmentDischarging = isDischarging
-                    currentSegment.add(Entry(x, y))
+                    currentSegment.add(Entry(x, y, record))
                 }
                 isDischarging -> {
-                    currentSegment.add(Entry(x, y))
+                    currentSegment.add(Entry(x, y, record))
                 }
                 else -> {
                     // Bridge point to make lines continuous
-                    currentSegment.add(Entry(x, y))
+                    currentSegment.add(Entry(x, y, record))
 
                     val color = when (selectedTabIndex) {
                         0 -> Color.RED
@@ -807,7 +811,7 @@ class MainActivity : AppCompatActivity() {
 
                     // Start new segment
                     currentSegment = ArrayList()
-                    currentSegment.add(Entry(x, y))
+                    currentSegment.add(Entry(x, y, record))
                     isSegmentDischarging = isDischarging
                 }
             }
@@ -1021,15 +1025,20 @@ class MainActivity : AppCompatActivity() {
                 contentResolver.openOutputStream(uri)?.use { outputStream ->
                     outputStream.bufferedWriter().use { writer ->
                         // CSV header
-                        writer.write("时间,电压(V),电流(A),功率(W),电量(%)\n")
+                        writer.write("时间,电压(V),电流(A),功率(W),电量(%),屏幕状态\n")
                         
                         val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                         for (record in currentRecords) {
                             val timeStr = format.format(Date(record.timestamp))
+                            val screenStateStr = when (record.screenState) {
+                                0 -> "锁屏"
+                                1 -> "亮屏"
+                                else -> "未知"
+                            }
                             writer.write(String.format(
                                 Locale.getDefault(),
-                                "%s,%.2f,%.2f,%.2f,%d\n",
-                                timeStr, record.voltage, record.current, record.power, record.batteryLevel
+                                "%s,%.2f,%.2f,%.2f,%d,%s\n",
+                                timeStr, record.voltage, record.current, record.power, record.batteryLevel, screenStateStr
                             ))
                         }
                     }
@@ -1046,14 +1055,58 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onCreateOptionsMenu(menu: android.view.Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        
+        // Hide theme options if we are viewing historical details
+        val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
+        val menuTheme = menu.findItem(R.id.menu_theme)
+        if (historySessionId != -1L) {
+            menuTheme?.isVisible = false
+        } else {
+            menuTheme?.isVisible = true
+            // Set correct icon for current theme
+            val themePrefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+            val currentTheme = themePrefs.getInt("THEME_MODE", 0)
+            val iconRes = when (currentTheme) {
+                1 -> R.drawable.ic_theme_light
+                2 -> R.drawable.ic_theme_dark
+                else -> R.drawable.ic_theme_auto
+            }
+            menuTheme?.setIcon(iconRes)
+        }
+        return true
+    }
+
     override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
+        val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
         if (item.itemId == android.R.id.home) {
-            val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
             if (historySessionId != -1L) {
                 finish()
                 return true
             }
         }
+        
+        val themePrefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+        val activeTheme = themePrefs.getInt("THEME_MODE", 0)
+        var newTheme: Int? = null
+        when (item.itemId) {
+            R.id.menu_theme_auto -> newTheme = 0
+            R.id.menu_theme_light -> newTheme = 1
+            R.id.menu_theme_dark -> newTheme = 2
+        }
+        
+        if (newTheme != null && newTheme != activeTheme) {
+            themePrefs.edit { putInt("THEME_MODE", newTheme) }
+            val newNightMode = when (newTheme) {
+                1 -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+                2 -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+            }
+            androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(newNightMode)
+            return true
+        }
+        
         return super.onOptionsItemSelected(item)
     }
 
@@ -1062,10 +1115,6 @@ class MainActivity : AppCompatActivity() {
         outState.putInt("SELECTED_TAB_INDEX", selectedTabIndex)
     }
 
-    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
-        super.onConfigurationChanged(newConfig)
-        recreate()
-    }
 
     override fun onDestroy() {
         val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
@@ -1089,10 +1138,15 @@ class RawDataAdapter(private val records: List<ChargeRecord>) : RecyclerView.Ada
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val record = records[position]
         holder.tvRawTime.text = format.format(Date(record.timestamp))
-        holder.tvRawVoltage.text = String.format(Locale.getDefault(), "%.2f V", record.voltage)
-        holder.tvRawCurrent.text = String.format(Locale.getDefault(), "%.2f A", record.current)
-        holder.tvRawPower.text = String.format(Locale.getDefault(), "%.2f W", record.power)
-        holder.tvRawBattery.text = "${record.batteryLevel}%"
+        holder.tvRawVoltage.text = String.format(Locale.getDefault(), "%.2f", record.voltage)
+        holder.tvRawCurrent.text = String.format(Locale.getDefault(), "%.2f", record.current)
+        holder.tvRawPower.text = String.format(Locale.getDefault(), "%.2f", record.power)
+        holder.tvRawBattery.text = record.batteryLevel.toString()
+        holder.tvRawScreenState.text = when (record.screenState) {
+            0 -> "锁屏"
+            1 -> "亮屏"
+            else -> "未知"
+        }
     }
 
     override fun getItemCount() = records.size
@@ -1103,5 +1157,6 @@ class RawDataAdapter(private val records: List<ChargeRecord>) : RecyclerView.Ada
         val tvRawCurrent: TextView = view.findViewById(R.id.tvRawCurrent)
         val tvRawPower: TextView = view.findViewById(R.id.tvRawPower)
         val tvRawBattery: TextView = view.findViewById(R.id.tvRawBattery)
+        val tvRawScreenState: TextView = view.findViewById(R.id.tvRawScreenState)
     }
 }

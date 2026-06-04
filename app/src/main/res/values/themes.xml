@@ -11,6 +11,18 @@
         <item name="colorOnSecondary">@color/black</item>
         <!-- Status bar color. -->
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
-        <!-- Customize your theme here. -->
+        
+        <!-- Action Bar Customization -->
+        <item name="actionBarStyle">@style/Widget.ChargeLog.ActionBar</item>
+        <item name="actionBarTheme">@style/ThemeOverlay.ChargeLog.ActionBar</item>
+    </style>
+
+    <style name="Widget.ChargeLog.ActionBar" parent="Widget.AppCompat.ActionBar.Solid">
+        <item name="background">@color/purple_500</item>
+    </style>
+
+    <style name="ThemeOverlay.ChargeLog.ActionBar" parent="ThemeOverlay.AppCompat.Dark.ActionBar">
+        <item name="android:textColorPrimary">@color/white</item>
+        <item name="colorOnPrimary">@color/white</item>
     </style>
 </resources>

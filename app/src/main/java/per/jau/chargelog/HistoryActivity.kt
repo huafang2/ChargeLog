@@ -1,5 +1,6 @@
 package per.jau.chargelog
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -118,10 +119,6 @@ class HistoryActivity : AppCompatActivity() {
         return super.onOptionsItemSelected(item)
     }
 
-    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
-        super.onConfigurationChanged(newConfig)
-        recreate()
-    }
 
     private fun loadHistory() {
         val dao = ChargeDatabase.getDatabase(this).chargeDao()
@@ -178,6 +175,7 @@ class HistoryAdapter(
     private var sessions = listOf<ChargeSession>()
     private val dateFormat = SimpleDateFormat("MM月dd日 HH:mm", Locale.getDefault())
 
+    @SuppressLint("NotifyDataSetChanged")
     fun submitList(list: List<ChargeSession>) {
         sessions = list
         notifyDataSetChanged()
@@ -188,13 +186,12 @@ class HistoryAdapter(
         return ViewHolder(view)
     }
 
+    @SuppressLint("SetTextI18n")
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val session = sessions[position]
         val startStr = dateFormat.format(Date(session.startTime))
-        val endStr = dateFormat.format(Date(session.endTime))
         val durationMins = (session.endTime - session.startTime) / 60000
 
-        holder.tvSessionTime.text = "$startStr - $endStr"
         holder.tvSessionDuration.text = "时长: $durationMins 分钟"
         
         // Build power range string
@@ -228,7 +225,6 @@ class HistoryAdapter(
     override fun getItemCount() = sessions.size
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val tvSessionTime: TextView = view.findViewById(R.id.tvSessionTime)
         val tvSessionDuration: TextView = view.findViewById(R.id.tvSessionDuration)
         val tvPowerRange: TextView = view.findViewById(R.id.tvPowerRange)
         val tvBatteryRange: TextView = view.findViewById(R.id.tvBatteryRange)

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/menu_theme"
+        android:title="主题设置"
+        android:icon="@drawable/ic_theme_auto"
+        app:showAsAction="always">
+        <menu>
+            <item
+                android:id="@+id/menu_theme_auto"
+                android:title="跟随系统"
+                android:icon="@drawable/ic_theme_auto"/>
+            <item
+                android:id="@+id/menu_theme_light"
+                android:title="浅色模式"
+                android:icon="@drawable/ic_theme_light"/>
+            <item
+                android:id="@+id/menu_theme_dark"
+                android:title="深色模式"
+                android:icon="@drawable/ic_theme_dark"/>
+        </menu>
+    </item>
+</menu>
