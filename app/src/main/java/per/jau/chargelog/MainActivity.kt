@@ -58,7 +58,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private lateinit var lineChart: LineChart
+    private lateinit var lineChart: CustomLineChart
+    private lateinit var sbChartScrubber: android.widget.SeekBar
     private lateinit var tvStatus: TextView
     private lateinit var btnStart: Button
     private lateinit var btnStop: Button
@@ -108,6 +109,10 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        if (savedInstanceState != null) {
+            selectedTabIndex = savedInstanceState.getInt("SELECTED_TAB_INDEX", 2)
+        }
+
         val mainView = findViewById<View>(R.id.main)
         val pLeft = mainView.paddingLeft
         val pTop = mainView.paddingTop
@@ -137,6 +142,7 @@ class MainActivity : AppCompatActivity() {
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
 
         lineChart = findViewById(R.id.lineChart)
+        sbChartScrubber = findViewById(R.id.sbChartScrubber)
         tvStatus = findViewById(R.id.tvStatus)
         btnStart = findViewById(R.id.btnStart)
         btnStop = findViewById(R.id.btnStop)
@@ -180,6 +186,7 @@ class MainActivity : AppCompatActivity() {
 
         setupTabs()
         setupChart()
+        setupScrubber()
         checkPermissions()
 
         // Start foreground service immediately on launch to keep background monitoring active
@@ -423,8 +430,8 @@ class MainActivity : AppCompatActivity() {
             override fun onTabReselected(tab: TabLayout.Tab?) {}
         })
 
-        // Select the third tab (Power, index 2) by default
-        tabLayout.getTabAt(2)?.select()
+        // Select the restored tab index (Power index 2 by default)
+        tabLayout.getTabAt(selectedTabIndex)?.select()
     }
 
     private fun setupChart() {
@@ -433,7 +440,9 @@ class MainActivity : AppCompatActivity() {
         lineChart.isDragEnabled = true
         lineChart.setScaleEnabled(true)
         lineChart.setPinchZoom(true)
-        lineChart.isHighlightPerDragEnabled = true
+        // Disable highlight per drag to make scrolling smoother, 
+        // and use the scrubber for precise selection
+        lineChart.isHighlightPerDragEnabled = false 
         lineChart.isHighlightPerTapEnabled = true
 
         val xAxis = lineChart.xAxis
@@ -455,9 +464,14 @@ class MainActivity : AppCompatActivity() {
                 if (e != null && currentRecords.isNotEmpty()) {
                     // Find the closest record
                     val targetTime = chartBaseTime + e.x.toLong()
-                    val record = currentRecords.minByOrNull { abs(it.timestamp - targetTime) }
-                    if (record != null) {
+                    val index = currentRecords.indices.minByOrNull { abs(currentRecords[it].timestamp - targetTime) } ?: -1
+                    if (index != -1) {
+                        val record = currentRecords[index]
                         updateDashboardText(record, true)
+                        // Sync scrubber if not dragging it
+                        if (!isDraggingScrubber) {
+                            sbChartScrubber.progress = index
+                        }
                     }
                 }
             }
@@ -466,6 +480,31 @@ class MainActivity : AppCompatActivity() {
                 if (currentRecords.isNotEmpty()) {
                     updateDashboardText(currentRecords.last(), false)
                 }
+            }
+        })
+    }
+
+    private var isDraggingScrubber = false
+    private fun setupScrubber() {
+        sbChartScrubber.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser && progress >= 0 && progress < currentRecords.size) {
+                    val record = currentRecords[progress]
+                    val x = (record.timestamp - chartBaseTime).toFloat()
+                    
+                    // Highlight the point
+                    val highlight = Highlight(x, 0, 0) // dataSetIndex 0
+                    lineChart.highlightValue(highlight, true)
+                    
+                    // Center the chart on the highlighted point if zoomed
+                    lineChart.centerViewToAnimated(x, lineChart.centerOfView.y, lineChart.data.getDataSetByIndex(0).getAxisDependency(), 100)
+                }
+            }
+            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {
+                isDraggingScrubber = true
+            }
+            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {
+                isDraggingScrubber = false
             }
         })
     }
@@ -507,6 +546,14 @@ class MainActivity : AppCompatActivity() {
                 btnShowData.visibility = View.VISIBLE
                 chartBaseTime = records.first().timestamp
 
+                // Update scrubber range
+                if (records.size > 1) {
+                    sbChartScrubber.max = records.size - 1
+                    sbChartScrubber.visibility = View.VISIBLE
+                } else {
+                    sbChartScrubber.visibility = View.GONE
+                }
+
                 // If no point is selected, update dashboard with the latest record
                 if (lineChart.highlighted?.isNotEmpty() == true) {
                     // Let the selection listener handle the text
@@ -525,10 +572,14 @@ class MainActivity : AppCompatActivity() {
                     // Live Mode: restrict to 15 minutes window
                     val fifteenMins = 15 * 60 * 1000f
                     lineChart.setVisibleXRangeMaximum(fifteenMins)
-                    if (durationFloat > fifteenMins) {
-                        lineChart.moveViewToX(durationFloat - fifteenMins)
-                    } else {
-                        lineChart.moveViewToX(0f)
+                    
+                    // Only auto-scroll to end if not currently scrubbing or selecting a point
+                    if (!isDraggingScrubber && lineChart.highlighted.isNullOrEmpty()) {
+                        if (durationFloat > fifteenMins) {
+                            lineChart.moveViewToX(durationFloat - fifteenMins)
+                        } else {
+                            lineChart.moveViewToX(0f)
+                        }
                     }
                 } else {
                     // History Mode: show entire process
@@ -564,7 +615,10 @@ class MainActivity : AppCompatActivity() {
     private fun updateChartData() {
         if (currentRecords.isEmpty()) return
 
-        val entries = ArrayList<Entry>()
+        val dataSets = ArrayList<LineDataSet>()
+        var currentSegment = ArrayList<Entry>()
+        var isSegmentDischarging: Boolean? = null
+
         for (i in currentRecords.indices) {
             val record = currentRecords[i]
             val x = (record.timestamp - chartBaseTime).toFloat()
@@ -574,25 +628,76 @@ class MainActivity : AppCompatActivity() {
                 2 -> record.power
                 else -> record.batteryLevel.toFloat()
             }
-            entries.add(Entry(x, y))
+            val isDischarging = record.current < 0
+
+            if (isSegmentDischarging == null) {
+                isSegmentDischarging = isDischarging
+                currentSegment.add(Entry(x, y))
+            } else if (isSegmentDischarging == isDischarging) {
+                currentSegment.add(Entry(x, y))
+            } else {
+                // Bridge point to make lines continuous
+                currentSegment.add(Entry(x, y))
+
+                val color = when (selectedTabIndex) {
+                    0 -> Color.RED
+                    1 -> Color.parseColor("#4488FF")
+                    2 -> if (isSegmentDischarging) Color.parseColor("#4488FF") else Color.GREEN
+                    else -> Color.parseColor("#FF9800")
+                }
+                
+                val label = if (dataSets.isEmpty()) {
+                    when (selectedTabIndex) {
+                        0 -> "电压 (V)"
+                        1 -> "电流 (A)"
+                        2 -> "功率 (W)"
+                        else -> "电量 (%)"
+                    }
+                } else {
+                    ""
+                }
+
+                val dataSet = createLineDataSet(currentSegment, label, color)
+                if (dataSets.isNotEmpty()) {
+                    dataSet.form = Legend.LegendForm.NONE
+                }
+                dataSets.add(dataSet)
+
+                // Start new segment
+                currentSegment = ArrayList()
+                currentSegment.add(Entry(x, y))
+                isSegmentDischarging = isDischarging
+            }
         }
 
-        val color = when (selectedTabIndex) {
-            0 -> Color.RED
-            1 -> Color.parseColor("#4488FF")
-            2 -> Color.GREEN
-            else -> Color.parseColor("#FF9800")
+        // Add the last segment
+        if (currentSegment.isNotEmpty() && isSegmentDischarging != null) {
+            val color = when (selectedTabIndex) {
+                0 -> Color.RED
+                1 -> Color.parseColor("#4488FF")
+                2 -> if (isSegmentDischarging) Color.parseColor("#4488FF") else Color.GREEN
+                else -> Color.parseColor("#FF9800")
+            }
+            
+            val label = if (dataSets.isEmpty()) {
+                when (selectedTabIndex) {
+                    0 -> "电压 (V)"
+                    1 -> "电流 (A)"
+                    2 -> "功率 (W)"
+                    else -> "电量 (%)"
+                }
+            } else {
+                ""
+            }
+
+            val dataSet = createLineDataSet(currentSegment, label, color)
+            if (dataSets.isNotEmpty()) {
+                dataSet.form = Legend.LegendForm.NONE
+            }
+            dataSets.add(dataSet)
         }
 
-        val label = when (selectedTabIndex) {
-            0 -> "电压 (V)"
-            1 -> "电流 (A)"
-            2 -> "功率 (W)"
-            else -> "电量 (%)"
-        }
-
-        val dataSet = createLineDataSet(entries, label, color)
-        val lineData = LineData(dataSet)
+        val lineData = LineData(dataSets.map { it })
         lineChart.data = lineData
         lineChart.notifyDataSetChanged()
         lineChart.invalidate()
@@ -806,6 +911,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return super.onOptionsItemSelected(item)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt("SELECTED_TAB_INDEX", selectedTabIndex)
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        recreate()
     }
 
     override fun onDestroy() {

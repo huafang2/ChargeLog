@@ -118,6 +118,11 @@ class HistoryActivity : AppCompatActivity() {
         return super.onOptionsItemSelected(item)
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        recreate()
+    }
+
     private fun loadHistory() {
         val dao = ChargeDatabase.getDatabase(this).chargeDao()
         lifecycleScope.launch {

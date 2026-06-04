@@ -21,6 +21,7 @@
         <activity
             android:name=".MainActivity"
             android:launchMode="singleTop"
+            android:configChanges="uiMode|screenSize|orientation"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -36,6 +37,7 @@
             
         <activity
             android:name=".HistoryActivity"
+            android:configChanges="uiMode|screenSize|orientation"
             android:exported="false" />
     </application>
 
