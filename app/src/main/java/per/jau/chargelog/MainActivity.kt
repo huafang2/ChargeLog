@@ -109,8 +109,6 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetTextI18n")
     override fun onCreate(savedInstanceState: Bundle?) {
-        val themePrefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-        val currentTheme = themePrefs.getInt("THEME_MODE", 0)
 
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -272,7 +270,7 @@ class MainActivity : AppCompatActivity() {
                             val now = System.currentTimeMillis()
                             prefs.edit {
                                 putLong("CURRENT_SESSION_START", now)
-                                    .putBoolean("FORCE_NEW_SESSION", true)
+                                putBoolean("FORCE_NEW_SESSION", true)
                             }
                         }
                     }
@@ -283,7 +281,7 @@ class MainActivity : AppCompatActivity() {
                 val now = System.currentTimeMillis()
                 prefs.edit {
                     putLong("CURRENT_SESSION_START", now)
-                        .putBoolean("FORCE_NEW_SESSION", true)
+                    putBoolean("FORCE_NEW_SESSION", true)
                 }
             }
         }
@@ -663,7 +661,7 @@ class MainActivity : AppCompatActivity() {
             spannable.append("  ") // Two spaces: one for spacing, one as target for the ImageSpan
             val start = baseTitle.length + 1
             
-            val drawable = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.ic_selected_pin)
+            val drawable = ContextCompat.getDrawable(this, R.drawable.ic_selected_pin)
             if (drawable != null) {
                 val sizePx = (22 * resources.displayMetrics.density).toInt()
                 drawable.setBounds(0, 0, sizePx, sizePx)
