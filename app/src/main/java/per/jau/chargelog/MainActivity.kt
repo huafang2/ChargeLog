@@ -87,6 +87,9 @@ class MainActivity : AppCompatActivity() {
     
     // For adaptive text coloring
     private var textColorPrimary: Int = Color.BLACK
+    private var colorRealtime: Int = Color.GREEN
+    private var colorSelected: Int = Color.RED
+    private var colorSummary: Int = Color.BLUE
 
     private var chartBaseTime: Long = 0L
 
@@ -98,10 +101,15 @@ class MainActivity : AppCompatActivity() {
                 observeData()
             }
         } else if (key == "IS_RECORDING") {
-            val isRecording = isRecording()
             val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
             if (historySessionId == -1L) {
-                tvStatus.text = if (isRecording) "正在记录充电数据..." else "充电日志已停止"
+                if (::lineChart.isInitialized) {
+                    val highlight = lineChart.highlighted?.firstOrNull()
+                    val record = highlight?.let { currentRecords.getOrNull(it.x.toInt()) }
+                    updateStatusTitle(highlight != null, record)
+                } else {
+                    tvStatus.text = if (isRecording()) "正在记录充电数据..." else "充电日志已停止"
+                }
                 updateButtonStates()
             }
         }
@@ -139,6 +147,9 @@ class MainActivity : AppCompatActivity() {
         withStyledAttributes(attrs = intArrayOf(android.R.attr.textColorPrimary)) {
             textColorPrimary = getColor(0, Color.BLACK)
         }
+        colorRealtime = ContextCompat.getColor(this, R.color.dashboard_value_realtime)
+        colorSelected = ContextCompat.getColor(this, R.color.dashboard_value_selected)
+        colorSummary = ContextCompat.getColor(this, R.color.dashboard_value_summary)
 
         val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
         prefs.edit {
@@ -648,7 +659,7 @@ class MainActivity : AppCompatActivity() {
         tvCurrentProtocol.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
     }
 
-    private fun updateStatusTitle(isSelected: Boolean) {
+    private fun updateStatusTitle(isSelected: Boolean, record: ChargeRecord? = null) {
         val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
         val baseTitle = if (historySessionId != -1L) {
             "查看历史记录"
@@ -656,10 +667,17 @@ class MainActivity : AppCompatActivity() {
             if (isRecording()) "正在记录充电数据..." else "充电日志已停止"
         }
         
-        if (isSelected) {
-            val spannable = android.text.SpannableStringBuilder(baseTitle)
+        if (isSelected && record != null) {
+            val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(record.timestamp))
+            val selectedTitle = if (historySessionId != -1L) {
+                "查看历史记录 (选中 $timeStr)"
+            } else {
+                val actionPrefix = if (isRecording()) "正在记录" else "停止记录"
+                "$actionPrefix (选中 $timeStr)"
+            }
+            val spannable = android.text.SpannableStringBuilder(selectedTitle)
             spannable.append("  ") // Two spaces: one for spacing, one as target for the ImageSpan
-            val start = baseTitle.length + 1
+            val start = selectedTitle.length + 1
             
             val drawable = ContextCompat.getDrawable(this, R.drawable.ic_selected_pin)
             if (drawable != null) {
@@ -679,13 +697,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun formatValueText(label: String, value: String, unit: String, color: Int): android.text.SpannableString {
+        val fullText = "$label$value $unit"
+        val spannable = android.text.SpannableString(fullText)
+        val start = label.length
+        val end = fullText.length
+        
+        spannable.setSpan(
+            android.text.style.ForegroundColorSpan(color),
+            start,
+            end,
+            android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        spannable.setSpan(
+            android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+            start,
+            end,
+            android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        return spannable
+    }
+
     private fun updateDashboardText(record: ChargeRecord, isHistorical: Boolean) {
         resetDashboardTextSize()
-        updateStatusTitle(isHistorical)
-        tvCurrentVoltage.text = String.format(Locale.getDefault(), "电压: %.2f V", record.voltage)
-        tvCurrentCurrent.text = String.format(Locale.getDefault(), "电流: %.2f A", record.current)
-        tvCurrentPower.text = String.format(Locale.getDefault(), "功率: %.2f W", record.power)
-        tvCurrentProtocol.text = String.format(Locale.getDefault(), "电量: %d%%", record.batteryLevel)
+        updateStatusTitle(isHistorical, record)
+        
+        val activeColor = if (isHistorical) colorSelected else colorRealtime
+        
+        val valV = String.format(Locale.getDefault(), "%.2f", record.voltage)
+        val valC = String.format(Locale.getDefault(), "%.2f", record.current)
+        val valP = String.format(Locale.getDefault(), "%.2f", record.power)
+        val valB = String.format(Locale.getDefault(), "%d", record.batteryLevel)
+        
+        tvCurrentVoltage.text = formatValueText("电压: ", valV, "V", activeColor)
+        tvCurrentCurrent.text = formatValueText("电流: ", valC, "A", activeColor)
+        tvCurrentPower.text = formatValueText("功率: ", valP, "W", activeColor)
+        tvCurrentProtocol.text = formatValueText("电量: ", valB, "%", activeColor)
     }
 
     private fun updateDashboardWithExtremeValues() {
@@ -729,11 +776,25 @@ class MainActivity : AppCompatActivity() {
         val spannable = android.text.SpannableString(fullText)
         val density = resources.displayMetrics.density
         val valuePx = (14f * density).toInt()
+        val start = label.length
+        val end = fullText.length
         
         spannable.setSpan(
             android.text.style.AbsoluteSizeSpan(valuePx),
-            label.length,
-            fullText.length,
+            start,
+            end,
+            android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        spannable.setSpan(
+            android.text.style.ForegroundColorSpan(colorSummary),
+            start,
+            end,
+            android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        spannable.setSpan(
+            android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+            start,
+            end,
             android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
         )
         return spannable

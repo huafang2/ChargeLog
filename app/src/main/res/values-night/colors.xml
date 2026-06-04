@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dashboard values colors overrides for Dark Theme -->
+    <color name="dashboard_value_realtime">#00E676</color>
+    <color name="dashboard_value_selected">#FFAB40</color>
+    <color name="dashboard_value_summary">#B388FF</color>
+</resources>
