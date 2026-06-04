@@ -34,7 +34,7 @@ class ChargeLoggingService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ChargeLog::LoggingWakeLock")
         
         createNotificationChannel()
@@ -63,12 +63,26 @@ class ChargeLoggingService : Service() {
         startForeground(NOTIFICATION_ID, notification)
 
         // Initialize session start time in SharedPreferences
-        val launch = scope.launch {
+        val db = ChargeDatabase.getDatabase(this)
+        scope.launch {
+            val latest = db.chargeDao().getLatestRecord()
             val now = System.currentTimeMillis()
-            val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
-
+            val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+            val existingStart = prefs.getLong("CURRENT_SESSION_START", 0L)
+            val forceNew = prefs.getBoolean("FORCE_NEW_SESSION", false)
+            
+            val sessionStart = if (!forceNew && latest != null && (now - latest.timestamp) < 5 * 60 * 1000) {
+                if (existingStart > 0L && existingStart <= latest.timestamp) {
+                    existingStart
+                } else {
+                    latest.timestamp
+                }
+            } else {
+                now
+            }
             prefs.edit {
-                ->
+                putLong("CURRENT_SESSION_START", sessionStart)
+                putBoolean("FORCE_NEW_SESSION", false)
             }
         }
 
@@ -95,12 +109,12 @@ class ChargeLoggingService : Service() {
         loggingJob?.cancel()
         loggingJob = scope.launch {
             val db = ChargeDatabase.getDatabase(this@ChargeLoggingService)
-            val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
+            val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
             while (true) {
                 try {
                     val isRecording = prefs.getBoolean("IS_RECORDING", false)
                     val interval = prefs.getInt("SAMPLING_INTERVAL_SECONDS", 5)
-                    val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                    val powerManager = getSystemService(POWER_SERVICE) as PowerManager
                     val isInteractive = powerManager.isInteractive
                     // If system Battery Saver is active, double the interval to save extra battery
                     val activeInterval = if (powerManager.isPowerSaveMode) interval * 2 else interval
@@ -131,7 +145,7 @@ class ChargeLoggingService : Service() {
                         var latestBatteryLevel = -1
 
                         // Sample 5 times over 500ms to compute average
-                        (0..<5).forEach { i ->
+                        (0..<5).forEach { _ ->
                             val sampleFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
                             val sampleStatus = registerReceiver(null, sampleFilter)
                             if (sampleStatus != null) {
@@ -311,7 +325,7 @@ class ChargeLoggingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START_RECORDING -> {
-                val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
+                val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
                 prefs.edit {
                     putBoolean("IS_RECORDING", true)
                 }
@@ -319,20 +333,20 @@ class ChargeLoggingService : Service() {
                 startLoggingLoop()
             }
             ACTION_STOP_RECORDING -> {
-                val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
+                val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
                 prefs.edit {
                     putBoolean("IS_RECORDING", false)
-                        .putBoolean("FORCE_NEW_SESSION", true)
+                    putBoolean("FORCE_NEW_SESSION", true)
                 }
                 triggerImmediateNotificationUpdate(false)
                 startLoggingLoop()
             }
             ACTION_EXIT_APP -> {
-                val prefs = getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
+                val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
                 prefs.edit {
                     putBoolean("IS_RECORDING", false)
-                        .putBoolean("FORCE_NEW_SESSION", true)
-                        .putBoolean("USER_EXITED", true)
+                    putBoolean("FORCE_NEW_SESSION", true)
+                    putBoolean("USER_EXITED", true)
                 }
                 stopSelf()
                 android.os.Process.killProcess(android.os.Process.myPid())

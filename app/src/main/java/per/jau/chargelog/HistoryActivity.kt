@@ -19,8 +19,6 @@ import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import per.jau.chargelog.data.ChargeDatabase
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
@@ -173,7 +171,6 @@ class HistoryAdapter(
 ) : RecyclerView.Adapter<HistoryAdapter.ViewHolder>() {
 
     private var sessions = listOf<ChargeSession>()
-    private val dateFormat = SimpleDateFormat("MM月dd日 HH:mm", Locale.getDefault())
 
     @SuppressLint("NotifyDataSetChanged")
     fun submitList(list: List<ChargeSession>) {
@@ -189,7 +186,6 @@ class HistoryAdapter(
     @SuppressLint("SetTextI18n")
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val session = sessions[position]
-        val startStr = dateFormat.format(Date(session.startTime))
         val durationMins = (session.endTime - session.startTime) / 60000
 
         holder.tvSessionDuration.text = "时长: $durationMins 分钟"

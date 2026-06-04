@@ -1,5 +1,6 @@
 package per.jau.chargelog
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -15,6 +16,7 @@ import com.github.mikephil.charting.highlight.Highlight
 import androidx.core.graphics.toColorInt
 import java.util.Locale
 import kotlin.math.abs
+import androidx.core.graphics.withClip
 
 class CustomLineChart @JvmOverloads constructor(
     context: Context,
@@ -70,6 +72,7 @@ class CustomLineChart @JvmOverloads constructor(
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val hList = highlighted
         val currentHighlight = if (hList != null && hList.isNotEmpty()) hList[0] else null
@@ -387,40 +390,38 @@ class CustomLineChart @JvmOverloads constructor(
         val top = viewPortHandler.contentTop()
         val bottom = viewPortHandler.contentBottom()
 
-        val saveId = canvas.save()
-        canvas.clipRect(viewPortHandler.contentRect)
-
-        var i = 0
-        while (i < entryCount - 1) {
-            val entry = dataSet.getEntryForIndex(i)
-            if (entry == null) {
-                i++
-                continue
-            }
-            val screenOn = getScreenOnState(entry)
-            if (!screenOn) {
-                val startX = entry.x
-                var nextEntry = dataSet.getEntryForIndex(i + 1)
-                while (nextEntry != null && !getScreenOnState(nextEntry) && i < entryCount - 2) {
+        canvas.withClip(viewPortHandler.contentRect) {
+            var i = 0
+            while (i < entryCount - 1) {
+                val entry = dataSet.getEntryForIndex(i)
+                if (entry == null) {
                     i++
-                    nextEntry = dataSet.getEntryForIndex(i + 1)
+                    continue
                 }
-                val endX = nextEntry?.x ?: startX
+                val screenOn = getScreenOnState(entry)
+                if (!screenOn) {
+                    val startX = entry.x
+                    var nextEntry = dataSet.getEntryForIndex(i + 1)
+                    while (nextEntry != null && !getScreenOnState(nextEntry) && i < entryCount - 2) {
+                        i++
+                        nextEntry = dataSet.getEntryForIndex(i + 1)
+                    }
+                    val endX = nextEntry?.x ?: startX
 
-                val ptsStart = floatArrayOf(startX, 0f)
-                val ptsEnd = floatArrayOf(endX, 0f)
-                trans.pointValuesToPixel(ptsStart)
-                trans.pointValuesToPixel(ptsEnd)
+                    val ptsStart = floatArrayOf(startX, 0f)
+                    val ptsEnd = floatArrayOf(endX, 0f)
+                    trans.pointValuesToPixel(ptsStart)
+                    trans.pointValuesToPixel(ptsEnd)
 
-                val left = ptsStart[0]
-                val right = ptsEnd[0]
+                    val left = ptsStart[0]
+                    val right = ptsEnd[0]
 
-                canvas.drawRect(left, top, right, bottom, bandPaint)
+                    canvas.drawRect(left, top, right, bottom, bandPaint)
+                }
+                i++
             }
-            i++
-        }
 
-        canvas.restoreToCount(saveId)
+        }
     }
 
     private fun getScreenOnState(entry: Entry): Boolean {
