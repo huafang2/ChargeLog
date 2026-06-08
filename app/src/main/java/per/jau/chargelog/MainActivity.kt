@@ -78,6 +78,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvCurrentCurrent: TextView
     private lateinit var tvCurrentPower: TextView
     private lateinit var tvCurrentProtocol: TextView
+    private lateinit var tvCurrentMaxPower: TextView
 
     private var currentRecords: List<ChargeRecord> = emptyList()
     private var selectedTabIndex = 2
@@ -178,6 +179,7 @@ class MainActivity : AppCompatActivity() {
         tvCurrentCurrent = findViewById(R.id.tvCurrentCurrent)
         tvCurrentPower = findViewById(R.id.tvCurrentPower)
         tvCurrentProtocol = findViewById(R.id.tvCurrentProtocol)
+        tvCurrentMaxPower = findViewById(R.id.tvCurrentMaxPower)
 
         val tvFooter = findViewById<TextView>(R.id.tvFooter)
         tvFooter.text = "Created by Jau v${BuildConfig.VERSION_NAME}"
@@ -728,6 +730,27 @@ class MainActivity : AppCompatActivity() {
         return spannable
     }
 
+    private fun updateMaxChargingLimitText(batteryStatus: Intent?) {
+        if (batteryStatus != null) {
+            val maxCurrentMicro = batteryStatus.getIntExtra("max_charging_current", -1)
+            val maxVoltageMicro = batteryStatus.getIntExtra("max_charging_voltage", -1)
+            
+            if (maxCurrentMicro > 0 && maxVoltageMicro > 0) {
+                val maxCurrent = maxCurrentMicro / 1_000_000f
+                val maxVoltage = maxVoltageMicro / 1_000_000f
+                val maxPower = maxVoltage * maxCurrent
+                
+                val valStr = String.format(Locale.getDefault(), "%.1f V / %.1f A (约 %.1f W)", maxVoltage, maxCurrent, maxPower)
+                tvCurrentMaxPower.text = formatValueText("快充上限: ", valStr, "", colorSummary)
+                tvCurrentMaxPower.visibility = View.VISIBLE
+            } else {
+                tvCurrentMaxPower.visibility = View.GONE
+            }
+        } else {
+            tvCurrentMaxPower.visibility = View.GONE
+        }
+    }
+
     private fun updateDashboardText(record: ChargeRecord, isHistorical: Boolean) {
         resetDashboardTextSize()
         updateStatusTitle(isHistorical, record)
@@ -743,6 +766,14 @@ class MainActivity : AppCompatActivity() {
         tvCurrentCurrent.text = formatValueText("电流: ", valC, "A", activeColor)
         tvCurrentPower.text = formatValueText("功率: ", valP, "W", activeColor)
         tvCurrentProtocol.text = formatValueText("电量: ", valB, "%", activeColor)
+        
+        if (isHistorical) {
+            tvCurrentMaxPower.visibility = View.GONE
+        } else {
+            val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+            val batteryStatus = registerReceiver(null, filter)
+            updateMaxChargingLimitText(batteryStatus)
+        }
     }
 
     private fun updateDashboardWithExtremeValues() {
@@ -779,6 +810,7 @@ class MainActivity : AppCompatActivity() {
         tvCurrentCurrent.text = formatExtremeValueText("电流: ", valC)
         tvCurrentPower.text = formatExtremeValueText("功率: ", valP)
         tvCurrentProtocol.text = formatExtremeValueText("电量: ", valB)
+        tvCurrentMaxPower.visibility = View.GONE
     }
 
     private fun formatExtremeValueText(label: String, value: String): android.text.SpannableString {
@@ -1076,10 +1108,16 @@ class MainActivity : AppCompatActivity() {
                             val batteryLevel = BatteryUtils.getBatteryLevel(this@MainActivity)
                             
                             resetDashboardTextSize()
-                            tvCurrentVoltage.text = String.format(Locale.getDefault(), "电压: %.2f V", voltage)
-                            tvCurrentCurrent.text = String.format(Locale.getDefault(), "电流: %.2f A", current)
-                            tvCurrentPower.text = String.format(Locale.getDefault(), "功率: %.2f W", power)
-                            tvCurrentProtocol.text = String.format(Locale.getDefault(), "电量: %d%%", batteryLevel)
+                            val valV = String.format(Locale.getDefault(), "%.2f", voltage)
+                            val valC = String.format(Locale.getDefault(), "%.2f", current)
+                            val valP = String.format(Locale.getDefault(), "%.2f", power)
+                            val valB = String.format(Locale.getDefault(), "%d", batteryLevel)
+                            
+                            tvCurrentVoltage.text = formatValueText("电压: ", valV, "V", colorRealtime)
+                            tvCurrentCurrent.text = formatValueText("电流: ", valC, "A", colorRealtime)
+                            tvCurrentPower.text = formatValueText("功率: ", valP, "W", colorRealtime)
+                            tvCurrentProtocol.text = formatValueText("电量: ", valB, "%", colorRealtime)
+                            updateMaxChargingLimitText(batteryStatus)
                         }
                     }
                 }

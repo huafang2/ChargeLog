@@ -255,10 +255,23 @@ class ChargeLoggingService : Service() {
         }
         
         val recordStatus = if (isRecording) "记录中" else "已停止"
+        
+        val batteryStatus = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val limitText = if (batteryStatus != null && !isDischarging) {
+            val maxCurrentMicro = batteryStatus.getIntExtra("max_charging_current", -1)
+            val maxVoltageMicro = batteryStatus.getIntExtra("max_charging_voltage", -1)
+            if (maxCurrentMicro > 0 && maxVoltageMicro > 0) {
+                val maxCurrent = maxCurrentMicro / 1_000_000f
+                val maxVoltage = maxVoltageMicro / 1_000_000f
+                val maxPower = maxVoltage * maxCurrent
+                String.format(Locale.getDefault(), "\t|\t上限: %.1fV/%.1fA (约%.1fW)", maxVoltage, maxCurrent, maxPower)
+            } else ""
+        } else ""
+
         val contentText = String.format(
             Locale.getDefault(),
-            "状态: %s\t|\t电量: %d%%\n电压: %.2f V\t|\t电流: %.2f A",
-            recordStatus, batteryLevel, voltage, current
+            "状态: %s%s\n电量: %d%%\t|\t电压: %.2f V\t|\t电流: %.2f A",
+            recordStatus, limitText, batteryLevel, voltage, current
         )
 
         val openIntent = Intent(this, per.jau.chargelog.MainActivity::class.java).apply {
