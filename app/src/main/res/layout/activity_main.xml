@@ -227,6 +227,7 @@
     </LinearLayout>
 
     <TextView
+        android:id="@+id/tvFooter"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Created by Jau"

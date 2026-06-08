@@ -25,6 +25,15 @@ interface ChargeDao {
     @Query("DELETE FROM charge_records WHERE sessionId = :sessionId")
     suspend fun deleteRecordsBySession(sessionId: Long)
 
+    @Query("DELETE FROM charge_records WHERE sessionId = :sessionId AND timestamp < :timestamp")
+    suspend fun deleteRecordsBefore(sessionId: Long, timestamp: Long)
+
+    @Query("DELETE FROM charge_records WHERE sessionId = :sessionId AND timestamp > :timestamp")
+    suspend fun deleteRecordsAfter(sessionId: Long, timestamp: Long)
+
+    @Query("DELETE FROM charge_records WHERE sessionId = :sessionId AND timestamp = :timestamp")
+    suspend fun deleteSingleRecord(sessionId: Long, timestamp: Long)
+
     @Query("DELETE FROM charge_records")
     suspend fun deleteAllRecords()
 }

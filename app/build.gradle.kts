@@ -11,8 +11,8 @@ android {
         applicationId = "per.jau.chargelog"
         minSdk = 31
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.6.1"
+        versionCode = 11
+        versionName = "1.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

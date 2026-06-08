@@ -373,40 +373,51 @@ class CustomLineChart @JvmOverloads constructor(
     private fun drawScreenOffBands(canvas: Canvas) {
         val chartData = data ?: return
         if (chartData.dataSetCount == 0) return
-        val dataSet = chartData.getDataSetByIndex(0) ?: return
-        val entryCount = dataSet.entryCount
-        if (entryCount < 2) return
 
         val nightModeFlags = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
         val isNight = nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES
 
+        // Increase alpha in night mode for better contrast (from 22 to 45)
         bandPaint.color = if (isNight) {
-            Color.argb(22, 255, 255, 255)
+            Color.argb(45, 255, 255, 255)
         } else {
             Color.argb(22, 0, 0, 0)
         }
 
-        val trans = getTransformer(dataSet.axisDependency)
+        // Collect all entries from all datasets in order to support multi-dataset/segmented series
+        val allEntries = ArrayList<Entry>()
+        for (dIdx in 0 until chartData.dataSetCount) {
+            val dataSet = chartData.getDataSetByIndex(dIdx) ?: continue
+            for (eIdx in 0 until dataSet.entryCount) {
+                val entry = dataSet.getEntryForIndex(eIdx)
+                if (entry != null) {
+                    allEntries.add(entry)
+                }
+            }
+        }
+        allEntries.sortBy { it.x }
+
+        val entryCount = allEntries.size
+        if (entryCount < 2) return
+
+        val firstDataSet = chartData.getDataSetByIndex(0) ?: return
+        val trans = getTransformer(firstDataSet.axisDependency)
         val top = viewPortHandler.contentTop()
         val bottom = viewPortHandler.contentBottom()
 
         canvas.withClip(viewPortHandler.contentRect) {
             var i = 0
             while (i < entryCount - 1) {
-                val entry = dataSet.getEntryForIndex(i)
-                if (entry == null) {
-                    i++
-                    continue
-                }
+                val entry = allEntries[i]
                 val screenOn = getScreenOnState(entry)
                 if (!screenOn) {
                     val startX = entry.x
-                    var nextEntry = dataSet.getEntryForIndex(i + 1)
-                    while (nextEntry != null && !getScreenOnState(nextEntry) && i < entryCount - 2) {
+                    var nextEntry = allEntries[i + 1]
+                    while (i < entryCount - 2 && !getScreenOnState(allEntries[i + 1])) {
                         i++
-                        nextEntry = dataSet.getEntryForIndex(i + 1)
+                        nextEntry = allEntries[i + 1]
                     }
-                    val endX = nextEntry?.x ?: startX
+                    val endX = nextEntry.x
 
                     val ptsStart = floatArrayOf(startX, 0f)
                     val ptsEnd = floatArrayOf(endX, 0f)
@@ -420,7 +431,6 @@ class CustomLineChart @JvmOverloads constructor(
                 }
                 i++
             }
-
         }
     }
 

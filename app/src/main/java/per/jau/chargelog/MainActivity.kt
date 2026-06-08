@@ -87,6 +87,7 @@ class MainActivity : AppCompatActivity() {
     
     // For adaptive text coloring
     private var textColorPrimary: Int = Color.BLACK
+    private var menuDeleteSegment: android.view.MenuItem? = null
     private var colorRealtime: Int = Color.GREEN
     private var colorSelected: Int = Color.RED
     private var colorSummary: Int = Color.BLUE
@@ -177,6 +178,9 @@ class MainActivity : AppCompatActivity() {
         tvCurrentCurrent = findViewById(R.id.tvCurrentCurrent)
         tvCurrentPower = findViewById(R.id.tvCurrentPower)
         tvCurrentProtocol = findViewById(R.id.tvCurrentProtocol)
+
+        val tvFooter = findViewById<TextView>(R.id.tvFooter)
+        tvFooter.text = "Created by Jau v${BuildConfig.VERSION_NAME}"
 
         layoutInterval = findViewById(R.id.layoutInterval)
         switchBgReport = findViewById(R.id.switchBgReport)
@@ -359,6 +363,8 @@ class MainActivity : AppCompatActivity() {
                 dialog.show()
             }
         }
+
+
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -475,6 +481,7 @@ class MainActivity : AppCompatActivity() {
                         lineChart.post {
                             lineChart.highlightValue(null, true)
                         }
+                        menuDeleteSegment?.isVisible = false
                         return
                     }
                     
@@ -486,6 +493,7 @@ class MainActivity : AppCompatActivity() {
                     if (index != -1) {
                         val record = currentRecords[index]
                         updateDashboardText(record, true)
+                        menuDeleteSegment?.isVisible = true
                         // Sync scrubber if not dragging it
                         if (!isDraggingScrubber) {
                             sbChartScrubber.progress = index
@@ -496,6 +504,7 @@ class MainActivity : AppCompatActivity() {
 
             override fun onNothingSelected() {
                 lastHighlightedX = null
+                menuDeleteSegment?.isVisible = false
                 if (currentRecords.isNotEmpty()) {
                     val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
                     if (historySessionId != -1L) {
@@ -597,6 +606,7 @@ class MainActivity : AppCompatActivity() {
                         tvCurrentPower.text = "功率: -- W"
                         tvCurrentProtocol.text = "电量: --"
                         btnShowData.visibility = View.GONE
+                        menuDeleteSegment?.isVisible = false
                     }
                     return@collectLatest
                 }
@@ -1117,6 +1127,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreateOptionsMenu(menu: android.view.Menu): Boolean {
         menuInflater.inflate(R.menu.menu_main, menu)
         
+        menuDeleteSegment = menu.findItem(R.id.menu_delete_segment)
+        menuDeleteSegment?.isVisible = lineChart.highlighted?.isNotEmpty() == true
+        
         // Hide theme options if we are viewing historical details
         val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
         val menuTheme = menu.findItem(R.id.menu_theme)
@@ -1144,6 +1157,44 @@ class MainActivity : AppCompatActivity() {
                 finish()
                 return true
             }
+        }
+        
+        if (item.itemId == R.id.menu_delete_segment) {
+            val highlight = lineChart.highlighted?.firstOrNull() ?: return true
+            val targetTime = chartBaseTime + highlight.x.toLong()
+            val index = currentRecords.indices.minByOrNull { abs(currentRecords[it].timestamp - targetTime) } ?: -1
+            if (index == -1) return true
+            val record = currentRecords[index]
+
+            val timeStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(record.timestamp))
+            val options = arrayOf(
+                "删除该时刻之前的所有数据 (不包含当前点)",
+                "删除该时刻之后的所有数据 (不包含当前点)",
+                "仅删除当前时刻的数据点"
+            )
+            AlertDialog.Builder(this)
+                .setTitle("裁剪数据 (选中时刻: $timeStr)")
+                .setItems(options) { _, which ->
+                    lifecycleScope.launch {
+                        val dao = ChargeDatabase.getDatabase(this@MainActivity).chargeDao()
+                        val sessionStart = record.sessionId
+                        when (which) {
+                            0 -> { // Delete before
+                                dao.deleteRecordsBefore(sessionStart, record.timestamp)
+                            }
+                            1 -> { // Delete after
+                                dao.deleteRecordsAfter(sessionStart, record.timestamp)
+                            }
+                            2 -> { // Delete single
+                                dao.deleteSingleRecord(sessionStart, record.timestamp)
+                            }
+                        }
+                        lineChart.highlightValue(null, true)
+                    }
+                }
+                .setNegativeButton("取消", null)
+                .show()
+            return true
         }
         
         val themePrefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
