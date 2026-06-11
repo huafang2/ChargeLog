@@ -2,28 +2,42 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
         android:id="@+id/menu_delete_segment"
-        android:title="删除数据"
+        android:title="@string/menu_delete_segment"
         android:icon="@drawable/ic_delete"
-        app:showAsAction="always"
+        app:showAsAction="ifRoom"
         android:visible="false" />
     <item
         android:id="@+id/menu_theme"
-        android:title="主题设置"
+        android:title="@string/menu_theme"
         android:icon="@drawable/ic_theme_auto"
-        app:showAsAction="always">
+        app:showAsAction="ifRoom">
         <menu>
             <item
                 android:id="@+id/menu_theme_auto"
-                android:title="跟随系统"
+                android:title="@string/menu_theme_auto"
                 android:icon="@drawable/ic_theme_auto"/>
             <item
                 android:id="@+id/menu_theme_light"
-                android:title="浅色模式"
+                android:title="@string/menu_theme_light"
                 android:icon="@drawable/ic_theme_light"/>
             <item
                 android:id="@+id/menu_theme_dark"
-                android:title="深色模式"
+                android:title="@string/menu_theme_dark"
                 android:icon="@drawable/ic_theme_dark"/>
+        </menu>
+    </item>
+    <item
+        android:id="@+id/menu_language"
+        android:title="语言 / Language"
+        android:icon="@drawable/ic_language"
+        app:showAsAction="ifRoom">
+        <menu>
+            <item
+                android:id="@+id/menu_lang_cn"
+                android:title="简体中文" />
+            <item
+                android:id="@+id/menu_lang_en"
+                android:title="English" />
         </menu>
     </item>
 </menu>

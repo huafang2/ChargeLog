@@ -5,14 +5,15 @@ plugins {
 
 android {
     namespace = "per.jau.chargelog"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "per.jau.chargelog"
         minSdk = 31
         targetSdk = 36
-        versionCode = 13
-        versionName = "1.8.1"
+
+        versionCode = 15
+        versionName = "1.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -38,7 +39,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
-    buildToolsVersion = "36.1.0"
+    buildToolsVersion = "37.0.0"
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {

@@ -12,5 +12,7 @@ data class ChargeRecord(
     val current: Float, // in Amps
     val power: Float,   // in Watts
     val batteryLevel: Int, // Replaced protocol with batteryLevel
-    val screenState: Int = 2 // 0: SCREEN_OFF, 1: SCREEN_ON, 2: SCREEN_UNKNOWN
+    val screenState: Int = 2, // 0: SCREEN_OFF, 1: SCREEN_ON, 2: SCREEN_UNKNOWN
+    val maxVoltage: Float? = null,
+    val maxCurrent: Float? = null
 )

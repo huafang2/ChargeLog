@@ -8,17 +8,23 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import per.jau.chargelog.data.ChargeDatabase
+import per.jau.chargelog.data.ChargeRecord
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
@@ -39,6 +45,22 @@ class HistoryActivity : AppCompatActivity() {
     private lateinit var rvHistory: RecyclerView
     private lateinit var adapter: HistoryAdapter
     private lateinit var btnClearAll: Button
+
+    private val exportJsonLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            writeHistoryJsonToUri(uri)
+        }
+    }
+
+    private val importJsonLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            readHistoryJsonFromUri(uri)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -73,14 +95,14 @@ class HistoryActivity : AppCompatActivity() {
         btnClearAll = findViewById(R.id.btnClearAll)
         btnClearAll.setOnClickListener {
             AlertDialog.Builder(this)
-                .setTitle("清空所有历史数据")
-                .setMessage("确定要清空所有充电历史记录吗？该操作无法恢复！")
-                .setPositiveButton("清空") { _, _ ->
+                .setTitle(R.string.dialog_clear_all_title)
+                .setMessage(R.string.dialog_clear_all_msg)
+                .setPositiveButton(R.string.clear) { _, _ ->
                     lifecycleScope.launch {
                         dao.deleteAllRecords()
                     }
                 }
-                .setNegativeButton("取消", null)
+                .setNegativeButton(R.string.cancel, null)
                 .show()
         }
 
@@ -93,14 +115,14 @@ class HistoryActivity : AppCompatActivity() {
             },
             onLongClick = { session ->
                 AlertDialog.Builder(this)
-                    .setTitle("删除历史记录")
-                    .setMessage("确定要删除这段充电历史记录吗？此操作无法撤销。")
-                    .setPositiveButton("删除") { _, _ ->
+                    .setTitle(R.string.dialog_delete_session_title)
+                    .setMessage(R.string.dialog_delete_session_msg)
+                    .setPositiveButton(R.string.menu_delete_segment) { _, _ ->
                         lifecycleScope.launch {
                             dao.deleteRecordsBySession(session.sessionId)
                         }
                     }
-                    .setNegativeButton("取消", null)
+                    .setNegativeButton(R.string.cancel, null)
                     .show()
             }
         )
@@ -109,9 +131,22 @@ class HistoryActivity : AppCompatActivity() {
         loadHistory()
     }
 
+    override fun onCreateOptionsMenu(menu: android.view.Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_history, menu)
+        return true
+    }
+
     override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
         if (item.itemId == android.R.id.home) {
             finish()
+            return true
+        }
+        if (item.itemId == R.id.menu_import_history) {
+            importHistory()
+            return true
+        }
+        if (item.itemId == R.id.menu_export_history) {
+            exportHistory()
             return true
         }
         return super.onOptionsItemSelected(item)
@@ -163,6 +198,199 @@ class HistoryActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun exportHistory() {
+        val fileName = "ChargeLog_Backup_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.json"
+        exportJsonLauncher.launch(fileName)
+    }
+
+    private fun writeHistoryJsonToUri(uri: android.net.Uri) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val dao = ChargeDatabase.getDatabase(this@HistoryActivity).chargeDao()
+                val records = dao.getAllRecordsOnce()
+                val grouped = records.groupBy { it.sessionId }
+                
+                val jsonArray = org.json.JSONArray()
+                for ((sessionId, sessionRecords) in grouped) {
+                    val sessionObj = org.json.JSONObject()
+                    sessionObj.put("id", sessionId)
+                    sessionObj.put("sessionId", sessionId)
+                    
+                    val recordsArray = org.json.JSONArray()
+                    for (rec in sessionRecords) {
+                        val recObj = org.json.JSONObject()
+                        recObj.put("timestamp", rec.timestamp)
+                        recObj.put("voltage", rec.voltage.toDouble())
+                        recObj.put("current", rec.current.toDouble())
+                        recObj.put("power", rec.power.toDouble())
+                        recObj.put("batteryLevel", rec.batteryLevel)
+                        recObj.put("screenState", rec.screenState)
+                        
+                        if (rec.maxVoltage != null) recObj.put("maxVoltage", rec.maxVoltage.toDouble())
+                        if (rec.maxCurrent != null) recObj.put("maxCurrent", rec.maxCurrent.toDouble())
+                        
+                        recordsArray.put(recObj)
+                    }
+                    sessionObj.put("records", recordsArray)
+                    jsonArray.put(sessionObj)
+                }
+                
+                contentResolver.openOutputStream(uri)?.use { os ->
+                    os.bufferedWriter().use { writer ->
+                        writer.write(jsonArray.toString(2))
+                    }
+                }
+                
+                launch(Dispatchers.Main) {
+                    Toast.makeText(this@HistoryActivity, getString(R.string.export_success), Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                launch(Dispatchers.Main) {
+                    Toast.makeText(this@HistoryActivity, getString(R.string.export_failed, e.message), Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun importHistory() {
+        importJsonLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
+    }
+
+    private fun readHistoryJsonFromUri(uri: android.net.Uri) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val content = contentResolver.openInputStream(uri)?.use { inputStream ->
+                    inputStream.bufferedReader().use { it.readText() }
+                } ?: throw Exception("Failed to read file")
+                
+                val jsonArray = org.json.JSONArray(content)
+                val dao = ChargeDatabase.getDatabase(this@HistoryActivity).chargeDao()
+                val localRecords = dao.getAllRecordsOnce()
+                
+                val localSessionMap = localRecords.groupBy { it.sessionId }
+                    .mapValues { (_, recs) -> recs.associateBy { it.timestamp } }
+                
+                val recordsToInsert = mutableListOf<ChargeRecord>()
+                val conflicts = mutableListOf<Pair<ChargeRecord, ChargeRecord>>()
+                
+                for (i in 0 until jsonArray.length()) {
+                    val sessionObj = jsonArray.getJSONObject(i)
+                    val importSessionId = if (sessionObj.has("id")) sessionObj.getLong("id") else sessionObj.getLong("sessionId")
+                    val recordsArray = sessionObj.getJSONArray("records")
+                    val localRecordMap = localSessionMap[importSessionId]
+                    
+                    for (j in 0 until recordsArray.length()) {
+                        val recObj = recordsArray.getJSONObject(j)
+                        val timestamp = recObj.getLong("timestamp")
+                        val voltage = recObj.getDouble("voltage").toFloat()
+                        val current = recObj.getDouble("current").toFloat()
+                        val power = recObj.getDouble("power").toFloat()
+                        val batteryLevel = recObj.getInt("batteryLevel")
+                        val screenState = recObj.optInt("screenState", 2)
+                        
+                        val maxVoltage = if (recObj.isNull("maxVoltage")) null else recObj.optDouble("maxVoltage").toFloat()
+                        val maxCurrent = if (recObj.isNull("maxCurrent")) null else recObj.optDouble("maxCurrent").toFloat()
+                        
+                        val importedRecord = ChargeRecord(
+                            sessionId = importSessionId,
+                            timestamp = timestamp,
+                            voltage = voltage,
+                            current = current,
+                            power = power,
+                            batteryLevel = batteryLevel,
+                            screenState = screenState,
+                            maxVoltage = maxVoltage,
+                            maxCurrent = maxCurrent
+                        )
+                        
+                        if (localRecordMap == null) {
+                            recordsToInsert.add(importedRecord)
+                        } else {
+                            val localRecord = localRecordMap[timestamp]
+                            if (localRecord == null) {
+                                recordsToInsert.add(importedRecord)
+                            } else {
+                                val isConsistent = localRecord.voltage == voltage &&
+                                        localRecord.current == current &&
+                                        localRecord.power == power &&
+                                        localRecord.batteryLevel == batteryLevel &&
+                                        localRecord.screenState == screenState &&
+                                        localRecord.maxVoltage == maxVoltage &&
+                                        localRecord.maxCurrent == maxCurrent
+                                
+                                if (!isConsistent) {
+                                    conflicts.add(Pair(localRecord, importedRecord))
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                launch(Dispatchers.Main) {
+                    if (conflicts.isNotEmpty()) {
+                        AlertDialog.Builder(this@HistoryActivity)
+                            .setTitle(getString(R.string.conflict_dialog_title))
+                            .setMessage(getString(R.string.conflict_dialog_msg, conflicts.size))
+                            .setPositiveButton(getString(R.string.conflict_use_imported)) { _, _ ->
+                                performImport(recordsToInsert, conflicts, useImported = true)
+                            }
+                            .setNegativeButton(getString(R.string.conflict_use_local)) { _, _ ->
+                                performImport(recordsToInsert, conflicts, useImported = false)
+                            }
+                            .setNeutralButton(R.string.cancel, null)
+                            .show()
+                    } else {
+                        if (recordsToInsert.isEmpty()) {
+                            Toast.makeText(this@HistoryActivity, getString(R.string.import_no_new_data), Toast.LENGTH_SHORT).show()
+                        } else {
+                            performImport(recordsToInsert, emptyList(), useImported = false)
+                        }
+                    }
+                }
+                
+            } catch (e: Exception) {
+                e.printStackTrace()
+                launch(Dispatchers.Main) {
+                    Toast.makeText(this@HistoryActivity, getString(R.string.import_failed, e.message), Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun performImport(
+        recordsToInsert: List<ChargeRecord>,
+        conflicts: List<Pair<ChargeRecord, ChargeRecord>>,
+        useImported: Boolean
+    ) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val dao = ChargeDatabase.getDatabase(this@HistoryActivity).chargeDao()
+                
+                if (recordsToInsert.isNotEmpty()) {
+                    dao.insertAll(recordsToInsert)
+                }
+                
+                if (useImported && conflicts.isNotEmpty()) {
+                    val recordsToUpdate = conflicts.map { (local, imported) ->
+                        imported.copy(id = local.id)
+                    }
+                    dao.updateAll(recordsToUpdate)
+                }
+                
+                launch(Dispatchers.Main) {
+                    val totalImported = recordsToInsert.size + (if (useImported) conflicts.size else 0)
+                    Toast.makeText(this@HistoryActivity, getString(R.string.import_success_msg, totalImported), Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                launch(Dispatchers.Main) {
+                    Toast.makeText(this@HistoryActivity, getString(R.string.import_failed, e.message), Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
 }
 
 class HistoryAdapter(
@@ -186,28 +414,31 @@ class HistoryAdapter(
     @SuppressLint("SetTextI18n")
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val session = sessions[position]
+        val context = holder.itemView.context
         val durationMins = (session.endTime - session.startTime) / 60000
 
-        holder.tvSessionDuration.text = "时长: $durationMins 分钟"
+        val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        holder.tvSessionTime.text = format.format(Date(session.startTime))
+        holder.tvSessionDuration.text = context.getString(R.string.duration_mins, durationMins)
         
         // Build power range string
         val powerBuilder = StringBuilder()
         if (session.minChargePower != null && session.maxChargePower != null) {
-            powerBuilder.append(String.format(Locale.getDefault(), "充电功率: 最小 %.1f W - 最大 %.1f W", session.minChargePower, session.maxChargePower))
+            powerBuilder.append(context.getString(R.string.history_charge_power, session.minChargePower, session.maxChargePower))
         }
         if (session.minDischargePower != null && session.maxDischargePower != null) {
             if (powerBuilder.isNotEmpty()) powerBuilder.append("\n")
-            powerBuilder.append(String.format(Locale.getDefault(), "放电功率: 最小 %.1f W - 最大 %.1f W", session.minDischargePower, session.maxDischargePower))
+            powerBuilder.append(context.getString(R.string.history_discharge_power, session.minDischargePower, session.maxDischargePower))
         }
         if (powerBuilder.isEmpty()) {
-            powerBuilder.append("功率: --")
+            powerBuilder.append(context.getString(R.string.history_power_empty))
         }
         holder.tvPowerRange.text = powerBuilder.toString()
         
         // Battery range
         val batChange = session.endBattery - session.startBattery
         val changeSign = if (batChange >= 0) "+$batChange%" else "$batChange%"
-        holder.tvBatteryRange.text = "电量变化: ${session.startBattery}% -> ${session.endBattery}% ($changeSign)"
+        holder.tvBatteryRange.text = context.getString(R.string.history_battery_range, session.startBattery, session.endBattery, changeSign)
 
         holder.itemView.setOnClickListener {
             onClick(session)
@@ -221,6 +452,7 @@ class HistoryAdapter(
     override fun getItemCount() = sessions.size
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val tvSessionTime: TextView = view.findViewById(R.id.tvSessionTime)
         val tvSessionDuration: TextView = view.findViewById(R.id.tvSessionDuration)
         val tvPowerRange: TextView = view.findViewById(R.id.tvPowerRange)
         val tvBatteryRange: TextView = view.findViewById(R.id.tvBatteryRange)

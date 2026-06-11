@@ -17,6 +17,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
@@ -49,6 +51,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.time.Duration.Companion.milliseconds
+import androidx.core.net.toUri
 
 class MainActivity : AppCompatActivity() {
 
@@ -183,6 +186,22 @@ class MainActivity : AppCompatActivity() {
 
         val tvFooter = findViewById<TextView>(R.id.tvFooter)
         tvFooter.text = "Created by Jau v${BuildConfig.VERSION_NAME}"
+        tvFooter.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle(getString(R.string.github_dialog_title))
+                .setMessage("https://github.com/huafang2/ChargeLog")
+                .setPositiveButton(getString(R.string.github_dialog_open)) { _, _ ->
+                    try {
+                        val webIntent = Intent(Intent.ACTION_VIEW,
+                            "https://github.com/huafang2/ChargeLog".toUri())
+                        startActivity(webIntent)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                .setNegativeButton(getString(R.string.github_dialog_reset), null)
+                .show()
+        }
 
         layoutInterval = findViewById(R.id.layoutInterval)
         switchBgReport = findViewById(R.id.switchBgReport)
@@ -196,12 +215,11 @@ class MainActivity : AppCompatActivity() {
         val sbInterval = findViewById<android.widget.SeekBar>(R.id.sbInterval)
         val currentInterval = prefs.getInt("SAMPLING_INTERVAL_SECONDS", 5)
         sbInterval.progress = currentInterval - 1
-        tvIntervalLabel.text = "采样间隔: ${currentInterval}秒"
+        tvIntervalLabel.text = getString(R.string.sampling_interval, currentInterval)
         sbInterval.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-            @SuppressLint("SetTextI18n")
             override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
                 val sec = progress + 1
-                tvIntervalLabel.text = "采样间隔: ${sec}秒"
+                tvIntervalLabel.text = getString(R.string.sampling_interval, sec)
                 prefs.edit { putInt("SAMPLING_INTERVAL_SECONDS", sec) }
             }
             override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
@@ -226,7 +244,7 @@ class MainActivity : AppCompatActivity() {
                 }
             // Make sure service is running
             startForegroundService(Intent(this, ChargeLoggingService::class.java))
-            tvStatus.text = "正在记录充电数据..."
+            tvStatus.text = getString(R.string.recording)
             updateButtonStates()
         }
 
@@ -236,7 +254,7 @@ class MainActivity : AppCompatActivity() {
                     putBoolean("IS_RECORDING", false)
                         .putBoolean("FORCE_NEW_SESSION", true)
                 }
-            tvStatus.text = "充电日志已停止"
+            tvStatus.text = getString(R.string.stopped)
             updateButtonStates()
         }
 
@@ -252,11 +270,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnHistory.setOnClickListener {
-            if (btnHistory.text.toString() == "返回历史") {
+            val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
+            if (historySessionId != -1L) {
                 finish()
             } else {
-                val intent = Intent(this, HistoryActivity::class.java)
-                startActivity(intent)
+                val nextIntent = Intent(this, HistoryActivity::class.java)
+                startActivity(nextIntent)
             }
         }
 
@@ -266,15 +285,15 @@ class MainActivity : AppCompatActivity() {
             val sessionStart = prefs.getLong("CURRENT_SESSION_START", 0L)
             if (isRecording) {
                 AlertDialog.Builder(this)
-                    .setTitle("提示")
-                    .setMessage("当前正在记录充电日志。清空屏幕将停止当前记录，且本次记录的数据将会被丢弃（不保存到历史记录）。确认继续吗？")
-                    .setPositiveButton("确认清空") { _, _ ->
+                    .setTitle(R.string.dialog_tip_title)
+                    .setMessage(R.string.dialog_clear_confirm_msg)
+                    .setPositiveButton(R.string.confirm_clear) { _, _ ->
                         lifecycleScope.launch {
                             // 1. Stop recording
                             prefs.edit {
                                 putBoolean("IS_RECORDING", false)
                             }
-                            tvStatus.text = "充电日志已停止"
+                            tvStatus.text = getString(R.string.stopped)
                             updateButtonStates()
                             
                             // 2. Discard current session data by deleting records matching sessionId
@@ -291,7 +310,7 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     }
-                    .setNegativeButton("取消", null)
+                    .setNegativeButton(R.string.cancel, null)
                     .show()
             } else {
                 // Not recording: clear screen immediately without dialog, no database deletion
@@ -325,11 +344,8 @@ class MainActivity : AppCompatActivity() {
                     val maxCP = chargePoints.maxOf { it.power }
                     val minCC = chargePoints.minOf { it.current }
                     val maxCC = chargePoints.maxOf { it.current }
-                    summaryBuilder.append(String.format(
-                        Locale.getDefault(),
-                        "充电功率: 最小 %.2f W - 最大 %.2f W\n充电电流: 最小 %.2f A - 最大 %.2f A\n",
-                        minCP, maxCP, minCC, maxCC
-                    ))
+                    summaryBuilder.append(getString(R.string.charge_power_summary, minCP, maxCP))
+                    summaryBuilder.append(getString(R.string.charge_current_summary, minCC, maxCC))
                 }
 
                 if (dischargePoints.isNotEmpty()) {
@@ -337,18 +353,15 @@ class MainActivity : AppCompatActivity() {
                     val maxDP = dischargePoints.maxOf { abs(it.power) }
                     val minDC = dischargePoints.minOf { abs(it.current) }
                     val maxDC = dischargePoints.maxOf { abs(it.current) }
-                    summaryBuilder.append(String.format(
-                        Locale.getDefault(),
-                        "放电功率: 最小 %.2f W - 最大 %.2f W\n放电电流: 最小 %.2f A - 最大 %.2f A\n",
-                        minDP, maxDP, minDC, maxDC
-                    ))
+                    summaryBuilder.append(getString(R.string.discharge_power_summary, minDP, maxDP))
+                    summaryBuilder.append(getString(R.string.discharge_current_summary, minDC, maxDC))
                 }
 
                 val startBat = currentRecords.first().batteryLevel
                 val endBat = currentRecords.last().batteryLevel
                 val batChange = endBat - startBat
                 val changeSign = if (batChange >= 0) "+$batChange%" else "$batChange%"
-                summaryBuilder.append("电量变化: $startBat% -> $endBat% ($changeSign)")
+                summaryBuilder.append(getString(R.string.battery_change, startBat, endBat, changeSign))
 
                 tvRawSummary.text = summaryBuilder.toString()
                 tvRawSummary.visibility = View.VISIBLE
@@ -382,13 +395,13 @@ class MainActivity : AppCompatActivity() {
         
         if (historySessionId != -1L) {
             supportActionBar?.setDisplayHomeAsUpEnabled(true)
-            tvStatus.text = "查看历史记录"
-            btnHistory.text = "返回历史"
+            tvStatus.text = getString(R.string.viewing_history)
+            btnHistory.text = getString(R.string.back_to_history)
             observeData(historySessionId)
         } else {
             supportActionBar?.setDisplayHomeAsUpEnabled(false)
-            tvStatus.text = if (isRecording()) "正在记录充电数据..." else "充电日志已停止"
-            btnHistory.text = "历史记录"
+            tvStatus.text = if (isRecording()) getString(R.string.recording) else getString(R.string.stopped)
+            btnHistory.text = getString(R.string.history)
             observeData()
         }
         updateButtonStates()
@@ -431,10 +444,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupTabs() {
-        tabLayout.addTab(tabLayout.newTab().setText("电压"))
-        tabLayout.addTab(tabLayout.newTab().setText("电流"))
-        tabLayout.addTab(tabLayout.newTab().setText("功率"))
-        tabLayout.addTab(tabLayout.newTab().setText("电量"))
+        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_voltage))
+        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_current))
+        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_power))
+        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_battery))
 
         tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {
@@ -650,9 +663,9 @@ class MainActivity : AppCompatActivity() {
                     // Only auto-scroll to end if not currently scrubbing or selecting a point
                     if (!isDraggingScrubber && lineChart.highlighted.isNullOrEmpty()) {
                         if (durationFloat > fifteenMins) {
-                            lineChart.moveViewToX(/* xvalue = */ durationFloat - fifteenMins)
+                            this@MainActivity.lineChart.moveViewToX(/* xValue = */ durationFloat - fifteenMins)
                         } else {
-                            lineChart.moveViewToX(0f)
+                            lineChart.moveViewToX(/* xValue = */ 0f)
                         }
                     }
                 } else {
@@ -674,18 +687,21 @@ class MainActivity : AppCompatActivity() {
     private fun updateStatusTitle(isSelected: Boolean, record: ChargeRecord? = null) {
         val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
         val baseTitle = if (historySessionId != -1L) {
-            "查看历史记录"
+            getString(R.string.viewing_history)
         } else {
-            if (isRecording()) "正在记录充电数据..." else "充电日志已停止"
+            if (isRecording()) getString(R.string.recording) else getString(R.string.stopped)
         }
         
         if (isSelected && record != null) {
             val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(record.timestamp))
             val selectedTitle = if (historySessionId != -1L) {
-                "查看历史记录 (选中 $timeStr)"
+                getString(R.string.title_viewing_history_selected, timeStr)
             } else {
-                val actionPrefix = if (isRecording()) "正在记录" else "停止记录"
-                "$actionPrefix (选中 $timeStr)"
+                if (isRecording()) {
+                    getString(R.string.title_recording_selected, timeStr)
+                } else {
+                    getString(R.string.title_stopped_selected, timeStr)
+                }
             }
             val spannable = android.text.SpannableStringBuilder(selectedTitle)
             spannable.append("  ") // Two spaces: one for spacing, one as target for the ImageSpan
@@ -740,8 +756,8 @@ class MainActivity : AppCompatActivity() {
                 val maxVoltage = maxVoltageMicro / 1_000_000f
                 val maxPower = maxVoltage * maxCurrent
                 
-                val valStr = String.format(Locale.getDefault(), "%.1f V / %.1f A (约 %.1f W)", maxVoltage, maxCurrent, maxPower)
-                tvCurrentMaxPower.text = formatValueText("快充上限: ", valStr, "", colorSummary)
+                val valStr = getString(R.string.max_power_format, maxVoltage, maxCurrent, maxPower)
+                tvCurrentMaxPower.text = formatValueText(getString(R.string.max_power_label), valStr, "", colorSummary)
                 tvCurrentMaxPower.visibility = View.VISIBLE
             } else {
                 tvCurrentMaxPower.visibility = View.GONE
@@ -762,13 +778,20 @@ class MainActivity : AppCompatActivity() {
         val valP = String.format(Locale.getDefault(), "%.2f", record.power)
         val valB = String.format(Locale.getDefault(), "%d", record.batteryLevel)
         
-        tvCurrentVoltage.text = formatValueText("电压: ", valV, "V", activeColor)
-        tvCurrentCurrent.text = formatValueText("电流: ", valC, "A", activeColor)
-        tvCurrentPower.text = formatValueText("功率: ", valP, "W", activeColor)
-        tvCurrentProtocol.text = formatValueText("电量: ", valB, "%", activeColor)
+        tvCurrentVoltage.text = formatValueText(getString(R.string.voltage_label), valV, "V", activeColor)
+        tvCurrentCurrent.text = formatValueText(getString(R.string.current_label), valC, "A", activeColor)
+        tvCurrentPower.text = formatValueText(getString(R.string.power_label), valP, "W", activeColor)
+        tvCurrentProtocol.text = formatValueText(getString(R.string.battery_label), valB, "%", activeColor)
         
         if (isHistorical) {
-            tvCurrentMaxPower.visibility = View.GONE
+            if (record.maxVoltage != null && record.maxCurrent != null && record.maxVoltage > 0 && record.maxCurrent > 0) {
+                val maxPower = record.maxVoltage * record.maxCurrent
+                val valStr = getString(R.string.max_power_format, record.maxVoltage, record.maxCurrent, maxPower)
+                tvCurrentMaxPower.text = formatValueText(getString(R.string.max_power_label), valStr, "", colorSummary)
+                tvCurrentMaxPower.visibility = View.VISIBLE
+            } else {
+                tvCurrentMaxPower.visibility = View.GONE
+            }
         } else {
             val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
             val batteryStatus = registerReceiver(null, filter)
@@ -806,10 +829,10 @@ class MainActivity : AppCompatActivity() {
         val valP = String.format(Locale.getDefault(), "%.2f ~ %.2f W", minP, maxP)
         val valB = "$startBat% -> $endBat% ($changeSign)"
 
-        tvCurrentVoltage.text = formatExtremeValueText("电压: ", valV)
-        tvCurrentCurrent.text = formatExtremeValueText("电流: ", valC)
-        tvCurrentPower.text = formatExtremeValueText("功率: ", valP)
-        tvCurrentProtocol.text = formatExtremeValueText("电量: ", valB)
+        tvCurrentVoltage.text = formatExtremeValueText(getString(R.string.voltage_label), valV)
+        tvCurrentCurrent.text = formatExtremeValueText(getString(R.string.current_label), valC)
+        tvCurrentPower.text = formatExtremeValueText(getString(R.string.power_label), valP)
+        tvCurrentProtocol.text = formatExtremeValueText(getString(R.string.battery_label), valB)
         tvCurrentMaxPower.visibility = View.GONE
     }
 
@@ -895,10 +918,10 @@ class MainActivity : AppCompatActivity() {
 
                     val label = if (dataSets.isEmpty()) {
                         when (selectedTabIndex) {
-                            0 -> "电压 (V)"
-                            1 -> "电流 (A)"
-                            2 -> "功率 (W)"
-                            else -> "电量 (%)"
+                            0 -> getString(R.string.chart_voltage)
+                            1 -> getString(R.string.chart_current)
+                            2 -> getString(R.string.chart_power)
+                            else -> getString(R.string.chart_battery)
                         }
                     } else {
                         ""
@@ -929,10 +952,10 @@ class MainActivity : AppCompatActivity() {
             
             val label = if (dataSets.isEmpty()) {
                 when (selectedTabIndex) {
-                    0 -> "电压 (V)"
-                    1 -> "电流 (A)"
-                    2 -> "功率 (W)"
-                    else -> "电量 (%)"
+                    0 -> getString(R.string.chart_voltage)
+                    1 -> getString(R.string.chart_current)
+                    2 -> getString(R.string.chart_power)
+                    else -> getString(R.string.chart_battery)
                 }
             } else {
                 ""
@@ -1046,38 +1069,36 @@ class MainActivity : AppCompatActivity() {
         durationSecs: Long
     ) {
         val message = StringBuilder().apply {
-            append("后台运行时间: ")
+            append(getString(R.string.bg_stats_duration))
             if (durationMins > 0) {
-                append("${durationMins}分")
+                append(getString(R.string.bg_stats_mins_secs, durationMins, durationSecs))
+            } else {
+                append(getString(R.string.bg_stats_secs, durationSecs))
             }
-            append("${durationSecs}秒\n\n")
             
-            append("电池电量变化:\n")
-            append("进入后台时: $startBattery%\n")
-            append("返回前台时: $endBattery%\n")
             val changeSign = if (batteryChange >= 0) "+$batteryChange%" else "$batteryChange%"
-            append("电量变化: $changeSign\n\n")
+            append(getString(R.string.bg_stats_battery_change, startBattery, endBattery, changeSign))
             
-            append("后台期间功率范围:\n")
+            append(getString(R.string.bg_stats_power_range))
             var hasStats = false
             if (minCP != Float.MAX_VALUE && maxCP != -Float.MAX_VALUE) {
-                append(String.format(Locale.getDefault(), "充电功率: 最小 %.2f W - 最大 %.2f W\n", minCP, maxCP))
+                append(getString(R.string.bg_stats_charge_power, minCP, maxCP))
                 hasStats = true
             }
             if (minDP != Float.MAX_VALUE && maxDP != -Float.MAX_VALUE) {
                 if (hasStats) append("\n")
-                append(String.format(Locale.getDefault(), "放电功率: 最小 %.2f W - 最大 %.2f W\n", minDP, maxDP))
+                append(getString(R.string.bg_stats_discharge_power, minDP, maxDP))
                 hasStats = true
             }
             if (!hasStats) {
-                append("无功率记录")
+                append(getString(R.string.bg_stats_no_power))
             }
         }.toString()
 
         AlertDialog.Builder(this)
-            .setTitle("后台运行统计报告")
+            .setTitle(getString(R.string.bg_stats_title))
             .setMessage(message)
-            .setPositiveButton("我知道了", null)
+            .setPositiveButton(getString(R.string.confirm), null)
             .show()
     }
 
@@ -1113,10 +1134,10 @@ class MainActivity : AppCompatActivity() {
                             val valP = String.format(Locale.getDefault(), "%.2f", power)
                             val valB = String.format(Locale.getDefault(), "%d", batteryLevel)
                             
-                            tvCurrentVoltage.text = formatValueText("电压: ", valV, "V", colorRealtime)
-                            tvCurrentCurrent.text = formatValueText("电流: ", valC, "A", colorRealtime)
-                            tvCurrentPower.text = formatValueText("功率: ", valP, "W", colorRealtime)
-                            tvCurrentProtocol.text = formatValueText("电量: ", valB, "%", colorRealtime)
+                            tvCurrentVoltage.text = formatValueText(getString(R.string.voltage_label), valV, "V", colorRealtime)
+                            tvCurrentCurrent.text = formatValueText(getString(R.string.current_label), valC, "A", colorRealtime)
+                            tvCurrentPower.text = formatValueText(getString(R.string.power_label), valP, "W", colorRealtime)
+                            tvCurrentProtocol.text = formatValueText(getString(R.string.battery_label), valB, "%", colorRealtime)
                             updateMaxChargingLimitText(batteryStatus)
                         }
                     }
@@ -1132,7 +1153,7 @@ class MainActivity : AppCompatActivity() {
                 contentResolver.openOutputStream(uri)?.use { outputStream ->
                     outputStream.bufferedWriter().use { writer ->
                         // CSV header
-                        writer.write("时间,电压(V),电流(A),功率(W),电量(%),屏幕状态\n")
+                        writer.write("时间,电压(V),电流(A),功率(W),电量(%),快充上限,屏幕状态\n")
                         
                         val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                         for (record in currentRecords) {
@@ -1142,21 +1163,30 @@ class MainActivity : AppCompatActivity() {
                                 1 -> "亮屏"
                                 else -> "未知"
                             }
+                            val limitStr = if (record.maxVoltage != null && record.maxCurrent != null && record.maxVoltage > 0 && record.maxCurrent > 0) {
+                                val maxPower = record.maxVoltage * record.maxCurrent
+                                val vStr = if (record.maxVoltage % 1 == 0f) String.format(Locale.US, "%.0f", record.maxVoltage) else String.format(Locale.US, "%.1f", record.maxVoltage)
+                                val cStr = if (record.maxCurrent % 1 == 0f) String.format(Locale.US, "%.0f", record.maxCurrent) else String.format(Locale.US, "%.1f", record.maxCurrent)
+                                val pStr = if (maxPower % 1 == 0f) String.format(Locale.US, "%.0f", maxPower) else String.format(Locale.US, "%.1f", maxPower)
+                                "${pStr}W(${vStr}V/${cStr}A)"
+                            } else {
+                                ""
+                            }
                             writer.write(String.format(
                                 Locale.getDefault(),
-                                "%s,%.2f,%.2f,%.2f,%d,%s\n",
-                                timeStr, record.voltage, record.current, record.power, record.batteryLevel, screenStateStr
+                                "%s,%.2f,%.2f,%.2f,%d,%s,%s\n",
+                                timeStr, record.voltage, record.current, record.power, record.batteryLevel, limitStr, screenStateStr
                             ))
                         }
                     }
                 }
                 launch(Dispatchers.Main) {
-                    android.widget.Toast.makeText(this@MainActivity, "CSV 导出成功", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(this@MainActivity, getString(R.string.csv_export_success), android.widget.Toast.LENGTH_SHORT).show()
                 }
             } catch (e: java.lang.Exception) {
                 e.printStackTrace()
                 launch(Dispatchers.Main) {
-                    android.widget.Toast.makeText(this@MainActivity, "导出失败: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(this@MainActivity, getString(R.string.csv_export_failed, e.message), android.widget.Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -1168,13 +1198,16 @@ class MainActivity : AppCompatActivity() {
         menuDeleteSegment = menu.findItem(R.id.menu_delete_segment)
         menuDeleteSegment?.isVisible = lineChart.highlighted?.isNotEmpty() == true
         
-        // Hide theme options if we are viewing historical details
+        // Hide theme/language options if we are viewing historical details
         val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
         val menuTheme = menu.findItem(R.id.menu_theme)
+        val menuLanguage = menu.findItem(R.id.menu_language)
         if (historySessionId != -1L) {
             menuTheme?.isVisible = false
+            menuLanguage?.isVisible = false
         } else {
             menuTheme?.isVisible = true
+            menuLanguage?.isVisible = true
             // Set correct icon for current theme
             val themePrefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
             val currentTheme = themePrefs.getInt("THEME_MODE", 0)
@@ -1206,12 +1239,12 @@ class MainActivity : AppCompatActivity() {
 
             val timeStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(record.timestamp))
             val options = arrayOf(
-                "删除该时刻之前的所有数据 (不包含当前点)",
-                "删除该时刻之后的所有数据 (不包含当前点)",
-                "仅删除当前时刻的数据点"
+                getString(R.string.crop_delete_before),
+                getString(R.string.crop_delete_after),
+                getString(R.string.crop_delete_single)
             )
             AlertDialog.Builder(this)
-                .setTitle("裁剪数据 (选中时刻: $timeStr)")
+                .setTitle(getString(R.string.crop_data_title, timeStr))
                 .setItems(options) { _, which ->
                     lifecycleScope.launch {
                         val dao = ChargeDatabase.getDatabase(this@MainActivity).chargeDao()
@@ -1230,8 +1263,17 @@ class MainActivity : AppCompatActivity() {
                         lineChart.highlightValue(null, true)
                     }
                 }
-                .setNegativeButton("取消", null)
+                .setNegativeButton(R.string.cancel, null)
                 .show()
+            return true
+        }
+        
+        if (item.itemId == R.id.menu_lang_cn) {
+            AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags("zh-CN"))
+            return true
+        }
+        if (item.itemId == R.id.menu_lang_en) {
+            AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags("en"))
             return true
         }
         
@@ -1247,11 +1289,11 @@ class MainActivity : AppCompatActivity() {
         if (newTheme != null && newTheme != activeTheme) {
             themePrefs.edit { putInt("THEME_MODE", newTheme) }
             val newNightMode = when (newTheme) {
-                1 -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
-                2 -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
-                else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+                1 -> AppCompatDelegate.MODE_NIGHT_NO
+                2 -> AppCompatDelegate.MODE_NIGHT_YES
+                else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
             }
-            androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(newNightMode)
+            AppCompatDelegate.setDefaultNightMode(newNightMode)
             return true
         }
         
@@ -1295,6 +1337,17 @@ class RawDataAdapter(private val records: List<ChargeRecord>) : RecyclerView.Ada
             1 -> "亮屏"
             else -> "未知"
         }
+        val maxV = record.maxVoltage
+        val maxC = record.maxCurrent
+        if (maxV != null && maxC != null && maxV > 0 && maxC > 0) {
+            val maxPower = maxV * maxC
+            val vStr = if (maxV % 1 == 0f) String.format(Locale.US, "%.0f", maxV) else String.format(Locale.US, "%.1f", maxV)
+            val cStr = if (maxC % 1 == 0f) String.format(Locale.US, "%.0f", maxC) else String.format(Locale.US, "%.1f", maxC)
+            val pStr = if (maxPower % 1 == 0f) String.format(Locale.US, "%.0f", maxPower) else String.format(Locale.US, "%.1f", maxPower)
+            holder.tvRawMaxPower.text = "${pStr}W(${vStr}V/${cStr}A)"
+        } else {
+            holder.tvRawMaxPower.text = ""
+        }
     }
 
     override fun getItemCount() = records.size
@@ -1305,6 +1358,7 @@ class RawDataAdapter(private val records: List<ChargeRecord>) : RecyclerView.Ada
         val tvRawCurrent: TextView = view.findViewById(R.id.tvRawCurrent)
         val tvRawPower: TextView = view.findViewById(R.id.tvRawPower)
         val tvRawBattery: TextView = view.findViewById(R.id.tvRawBattery)
+        val tvRawMaxPower: TextView = view.findViewById(R.id.tvRawMaxPower)
         val tvRawScreenState: TextView = view.findViewById(R.id.tvRawScreenState)
     }
 }

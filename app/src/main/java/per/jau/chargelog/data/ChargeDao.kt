@@ -10,6 +10,15 @@ interface ChargeDao {
     @Insert
     suspend fun insert(record: ChargeRecord)
 
+    @Query("SELECT * FROM charge_records ORDER BY timestamp ASC")
+    suspend fun getAllRecordsOnce(): List<ChargeRecord>
+
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    suspend fun insertAll(records: List<ChargeRecord>)
+
+    @androidx.room.Update
+    suspend fun updateAll(records: List<ChargeRecord>)
+
     @Query("SELECT * FROM charge_records ORDER BY timestamp DESC LIMIT 1")
     suspend fun getLatestRecord(): ChargeRecord?
 

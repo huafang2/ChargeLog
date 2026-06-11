@@ -4,7 +4,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
@@ -20,7 +19,6 @@ import per.jau.chargelog.R
 import per.jau.chargelog.data.ChargeDatabase
 import per.jau.chargelog.data.ChargeRecord
 import per.jau.chargelog.utils.BatteryUtils
-import java.util.Locale
 import kotlin.math.abs
 import androidx.core.content.edit
 import kotlin.time.Duration.Companion.milliseconds
@@ -51,8 +49,8 @@ class ChargeLoggingService : Service() {
 
         // Initial silent placeholder notification
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("充电日志正在运行")
-            .setContentText("正在后台记录充电数据...")
+            .setContentTitle(getString(R.string.service_running_title))
+            .setContentText(getString(R.string.service_running_desc))
             .setSmallIcon(R.drawable.ic_stat_battery)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -143,12 +141,14 @@ class ChargeLoggingService : Service() {
                         var sumCurrent = 0f
                         var count = 0
                         var latestBatteryLevel = -1
+                        var latestBatteryStatus: Intent? = null
 
                         // Sample 5 times over 500ms to compute average
                         (0..<5).forEach { _ ->
                             val sampleFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
                             val sampleStatus = registerReceiver(null, sampleFilter)
                             if (sampleStatus != null) {
+                                latestBatteryStatus = sampleStatus
                                 val voltage = BatteryUtils.getVoltage(sampleStatus)
                                 val current = BatteryUtils.getCurrent(this@ChargeLoggingService, sampleStatus)
                                 sumVoltage += voltage
@@ -168,6 +168,18 @@ class ChargeLoggingService : Service() {
                             val avgCurrent = sumCurrent / count
                             val avgPower = avgVoltage * avgCurrent
                             
+                            val isCharging = avgCurrent >= 0
+                            var maxVLimit: Float? = null
+                            var maxCLimit: Float? = null
+                            if (isCharging && latestBatteryStatus != null) {
+                                val maxCurrentMicro = latestBatteryStatus.getIntExtra("max_charging_current", -1)
+                                val maxVoltageMicro = latestBatteryStatus.getIntExtra("max_charging_voltage", -1)
+                                if (maxCurrentMicro > 0 && maxVoltageMicro > 0) {
+                                    maxCLimit = maxCurrentMicro / 1_000_000f
+                                    maxVLimit = maxVoltageMicro / 1_000_000f
+                                }
+                            }
+                            
                             val sessionId = prefs.getLong("CURRENT_SESSION_START", System.currentTimeMillis())
 
                             val record = ChargeRecord(
@@ -177,7 +189,9 @@ class ChargeLoggingService : Service() {
                                 current = avgCurrent,
                                 power = avgPower,
                                 batteryLevel = latestBatteryLevel,
-                                screenState = if (isInteractive) 1 else 0
+                                screenState = if (isInteractive) 1 else 0,
+                                maxVoltage = maxVLimit,
+                                maxCurrent = maxCLimit
                             )
 
                             db.chargeDao().insert(record)
@@ -245,16 +259,16 @@ class ChargeLoggingService : Service() {
     }
 
     private fun updateNotification(voltage: Float, current: Float, power: Float, batteryLevel: Int, isRecording: Boolean) {
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         
         val isDischarging = current < 0
         val stateTitle = if (isDischarging) {
-            String.format(Locale.getDefault(), "放电: %.2f W", power)
+            getString(R.string.service_discharging, power)
         } else {
-            String.format(Locale.getDefault(), "充电: %.2f W", power)
+            getString(R.string.service_charging, power)
         }
         
-        val recordStatus = if (isRecording) "记录中" else "已停止"
+        val recordStatus = if (isRecording) getString(R.string.service_status_recording) else getString(R.string.service_status_stopped)
         
         val batteryStatus = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val limitText = if (batteryStatus != null && !isDischarging) {
@@ -264,15 +278,11 @@ class ChargeLoggingService : Service() {
                 val maxCurrent = maxCurrentMicro / 1_000_000f
                 val maxVoltage = maxVoltageMicro / 1_000_000f
                 val maxPower = maxVoltage * maxCurrent
-                String.format(Locale.getDefault(), "\t|\t上限: %.1fV/%.1fA (约%.1fW)", maxVoltage, maxCurrent, maxPower)
+                getString(R.string.service_notif_limit, maxVoltage, maxCurrent, maxPower)
             } else ""
         } else ""
 
-        val contentText = String.format(
-            Locale.getDefault(),
-            "状态: %s%s\n电量: %d%%\t|\t电压: %.2f V\t|\t电流: %.2f A",
-            recordStatus, limitText, batteryLevel, voltage, current
-        )
+        val contentText = getString(R.string.service_notif_format, recordStatus, limitText, batteryLevel, voltage, current)
 
         val openIntent = Intent(this, per.jau.chargelog.MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -318,17 +328,17 @@ class ChargeLoggingService : Service() {
             .setContentTitle(stateTitle)
             .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
-            .setSmallIcon(R.drawable.ic_stat_battery)//(android.R.drawable.ic_menu_info_details)
+            .setSmallIcon(R.drawable.ic_stat_battery)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
         
         if (isRecording) {
-            builder.addAction(0, "停止统计", stopPendingIntent)
+            builder.addAction(0, getString(R.string.service_action_stop), stopPendingIntent)
         } else {
-            builder.addAction(0, "开始统计", startPendingIntent)
+            builder.addAction(0, getString(R.string.service_action_start), startPendingIntent)
         }
-        builder.addAction(0, "退出后台", exitPendingIntent)
+        builder.addAction(0, getString(R.string.service_action_exit), exitPendingIntent)
         
         builder.extras.putBoolean("android.requestPromotedOngoing", true)
 
@@ -384,7 +394,7 @@ class ChargeLoggingService : Service() {
     private fun createNotificationChannel() {
         val serviceChannel = NotificationChannel(
             CHANNEL_ID,
-            "充电日志服务通道",
+            getString(R.string.service_channel_name),
             NotificationManager.IMPORTANCE_LOW
         )
         val manager = getSystemService(NotificationManager::class.java)

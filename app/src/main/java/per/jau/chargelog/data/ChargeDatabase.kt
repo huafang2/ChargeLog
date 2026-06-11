@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [ChargeRecord::class], version = 4, exportSchema = false)
+@Database(entities = [ChargeRecord::class], version = 5, exportSchema = false)
 abstract class ChargeDatabase : RoomDatabase() {
     abstract fun chargeDao(): ChargeDao
 
@@ -19,6 +19,13 @@ abstract class ChargeDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE charge_records ADD COLUMN maxVoltage REAL")
+                db.execSQL("ALTER TABLE charge_records ADD COLUMN maxCurrent REAL")
+            }
+        }
+
         fun getDatabase(context: Context): ChargeDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -26,7 +33,7 @@ abstract class ChargeDatabase : RoomDatabase() {
                     ChargeDatabase::class.java,
                     "charge_database"
                 )
-                    .addMigrations(MIGRATION_3_4)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigration(false)
                 .build()
                 INSTANCE = instance

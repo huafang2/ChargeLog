@@ -1,3 +1,127 @@
 <resources>
     <string name="app_name">ChargeLog</string>
+    <string name="stopped">充电日志已停止</string>
+    <string name="recording">正在记录充电数据…</string>
+    <string name="viewing_history">查看历史记录</string>
+    <string name="view_data">查看数据</string>
+    <string name="history">历史记录</string>
+    <string name="back_to_history">返回历史</string>
+    <string name="voltage_label">电压: </string>
+    <string name="current_label">电流: </string>
+    <string name="power_label">功率: </string>
+    <string name="battery_label">电量: </string>
+    <string name="max_power_label">快充上限: </string>
+    <string name="max_power_format">%1$.1f V / %2$.1f A (约 %3$.1f W)</string>
+    <string name="start">开始</string>
+    <string name="stop">停止</string>
+    <string name="clear">清空</string>
+    <string name="exit">退出</string>
+    <string name="sampling_interval">采样间隔: %1$d秒</string>
+    <string name="enable_bg_report">启用后台统计报告</string>
+    <string name="bg_report_generated">已生成后台运行统计报告</string>
+    <string name="view">查看</string>
+    <string name="close">关闭</string>
+    <string name="cancel">取消</string>
+    <string name="confirm">确认</string>
+    <string name="confirm_clear">确认清空</string>
+    
+    <string name="raw_charging_data">原始充电数据</string>
+    <string name="battery_change">电量变化: %1$d%% -&gt; %2$d%% (%3$s)</string>
+    <string name="charge_power_summary">充电功率: 最小 %1$.2f W - 最大 %2$.2f W\n</string>
+    <string name="charge_current_summary">充电电流: 最小 %1$.2f A - 最大 %2$.2f A\n</string>
+    <string name="discharge_power_summary">放电功率: 最小 %1$.2f W - 最大 %2$.2f W\n</string>
+    <string name="discharge_current_summary">放电电流: 最小 %1$.2f A - 最大 %2$.2f A\n</string>
+    
+    <string name="export_csv">导出 CSV</string>
+    <string name="csv_export_success">CSV 导出成功</string>
+    <string name="csv_export_failed">导出失败: %s</string>
+    
+    <string name="dialog_tip_title">提示</string>
+    <string name="dialog_clear_confirm_msg">当前正在记录充电日志。清空屏幕将停止当前记录，且本次记录的数据将会被丢弃（不保存到历史记录）。确认继续吗？</string>
+    
+    <string name="menu_delete_segment">删除数据</string>
+    <string name="menu_theme">主题设置</string>
+    <string name="menu_theme_auto">跟随系统</string>
+    <string name="menu_theme_light">浅色模式</string>
+    <string name="menu_theme_dark">深色模式</string>
+    
+    <string name="crop_data_title">裁剪数据 (选中时刻: %s)</string>
+    <string name="crop_delete_before">删除该时刻之前的所有数据 (不包含当前点)</string>
+    <string name="crop_delete_after">删除该时刻之后的所有数据 (不包含当前点)</string>
+    <string name="crop_delete_single">仅删除当前时刻的数据点</string>
+    
+    <string name="history_title">充电历史记录</string>
+    <string name="clear_all">清空所有</string>
+    <string name="dialog_clear_all_title">清空所有历史数据</string>
+    <string name="dialog_clear_all_msg">确定要清空所有充电历史记录吗？该操作无法恢复！</string>
+    
+    <string name="dialog_delete_session_title">删除历史记录</string>
+    <string name="dialog_delete_session_msg">确定要删除这段充电历史记录吗？此操作无法撤销。</string>
+    
+    <string name="duration_mins">时长: %d 分钟</string>
+    <string name="history_charge_power">充电功率: 最小 %1$.1f W - 最大 %2$.1f W</string>
+    <string name="history_discharge_power">放电功率: 最小 %1$.1f W - 最大 %2$.1f W</string>
+    <string name="history_power_empty">功率: —</string>
+    <string name="history_battery_range">电量变化: %1$d%% -&gt; %2$d%% (%3$s)</string>
+    
+    <string name="chart_voltage">电压 (V)</string>
+    <string name="chart_current">电流 (A)</string>
+    <string name="chart_power">功率 (W)</string>
+    <string name="chart_battery">电量 (%)</string>
+    <string name="tab_voltage">电压</string>
+    <string name="tab_current">电流</string>
+    <string name="tab_power">功率</string>
+    <string name="tab_battery">电量</string>
+    
+    <string name="table_time">时间</string>
+    <string name="table_voltage">电压(V)</string>
+    <string name="table_current">电流(A)</string>
+    <string name="table_power">功率(W)</string>
+    <string name="table_battery">电量(%)</string>
+    <string name="table_limit">快充上限</string>
+    <string name="table_screen">屏幕</string>
+    
+    <string name="screen_locked">锁屏</string>
+    <string name="screen_unlocked">亮屏</string>
+    <string name="screen_unknown">未知</string>
+    
+    <string name="bg_stats_title">后台运行统计报告</string>
+    <string name="bg_stats_duration">后台运行时间: </string>
+    <string name="bg_stats_mins_secs">%1$d分%2$d秒\n\n</string>
+    <string name="bg_stats_secs">%d秒\n\n</string>
+    <string name="bg_stats_battery_change">电池电量变化:\n进入后台时: %1$d%%\n返回前台时: %2$d%%\n电量变化: %3$s\n\n</string>
+    <string name="bg_stats_power_range">后台期间功率范围:\n</string>
+    <string name="bg_stats_charge_power">充电功率: 最小 %1$.2f W - 最大 %2$.2f W\n</string>
+    <string name="bg_stats_discharge_power">放电功率: 最小 %1$.2f W - 最大 %2$.2f W\n</string>
+    <string name="bg_stats_no_power">无功率记录</string>
+    
+    <string name="service_running_title">充电日志正在运行</string>
+    <string name="service_running_desc">正在后台记录充电数据…</string>
+    <string name="service_discharging">放电: %1$.2f W</string>
+    <string name="service_charging">充电: %1$.2f W</string>
+    <string name="service_status_recording">记录中</string>
+    <string name="service_status_stopped">已停止</string>
+    <string name="service_notif_format">状态: %1$s%2$s\n电量: %3$d%%\t|\t电压: %4$.2f V\t|\t电流: %5$.2f A</string>
+    <string name="service_notif_limit">\t|\t上限: %1$.1fV/%2$.1fA (%3$.1fW)</string>
+    <string name="service_action_stop">停止统计</string>
+    <string name="service_action_start">开始统计</string>
+    <string name="service_action_exit">退出后台</string>
+    <string name="service_channel_name">充电日志服务通道</string>
+    <string name="title_viewing_history_selected">查看历史记录 (选中 %s)</string>
+    <string name="title_recording_selected">正在记录 (选中 %s)</string>
+    <string name="title_stopped_selected">停止记录 (选中 %s)</string>
+    <string name="import_history">导入</string>
+    <string name="export_history">导出</string>
+    <string name="export_success">历史记录导出成功</string>
+    <string name="export_failed">导出失败: %s</string>
+    <string name="import_failed">导入失败: %s</string>
+    <string name="conflict_dialog_title">导入冲突</string>
+    <string name="conflict_dialog_msg">在 %d 个时间点上发现导入数据与本地数据不一致。请选择如何处理冲突数据：</string>
+    <string name="conflict_use_imported">使用导入的数据覆盖</string>
+    <string name="conflict_use_local">保留本地已有数据</string>
+    <string name="import_no_new_data">没有发现新数据，未执行导入</string>
+    <string name="import_success_msg">成功导入/更新 %d 条记录</string>
+    <string name="github_dialog_title">打开 GitHub 仓库</string>
+    <string name="github_dialog_open">打开</string>
+    <string name="github_dialog_reset">返回</string>
 </resources>

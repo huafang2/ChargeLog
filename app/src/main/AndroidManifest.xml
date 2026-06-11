@@ -20,6 +20,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ChargeLog">
 
+        <meta-data
+            android:name="androidx.appcompat.app.AppCompatDelegate.LocaleStorage"
+            android:value="auto" />
+
         <activity
             android:name=".MainActivity"
             android:launchMode="singleTop"
