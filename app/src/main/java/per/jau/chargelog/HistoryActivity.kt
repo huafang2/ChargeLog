@@ -7,6 +7,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -23,6 +25,10 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import per.jau.chargelog.data.ChargeDatabase
 import per.jau.chargelog.data.ChargeRecord
+import per.jau.chargelog.utils.BatteryHealthEstimate
+import per.jau.chargelog.utils.BatteryHealthEstimator
+import per.jau.chargelog.utils.BatteryHealthResult
+import per.jau.chargelog.utils.BatteryUtils
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -45,6 +51,7 @@ class HistoryActivity : AppCompatActivity() {
     private lateinit var rvHistory: RecyclerView
     private lateinit var adapter: HistoryAdapter
     private lateinit var btnClearAll: Button
+    private lateinit var btnEstimateHealth: Button
 
     private val exportJsonLauncher = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -93,6 +100,8 @@ class HistoryActivity : AppCompatActivity() {
         rvHistory.layoutManager = LinearLayoutManager(this)
 
         btnClearAll = findViewById(R.id.btnClearAll)
+        btnEstimateHealth = findViewById(R.id.btnEstimateHealth)
+        btnEstimateHealth.setOnClickListener { beginHealthEstimate() }
         btnClearAll.setOnClickListener {
             AlertDialog.Builder(this)
                 .setTitle(R.string.dialog_clear_all_title)
@@ -202,6 +211,115 @@ class HistoryActivity : AppCompatActivity() {
     private fun exportHistory() {
         val fileName = "ChargeLog_Backup_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.json"
         exportJsonLauncher.launch(fileName)
+    }
+
+    private fun beginHealthEstimate() {
+        val selectedIds = adapter.selectedSessionIds()
+        if (selectedIds.isEmpty()) {
+            Toast.makeText(this, R.string.health_select_records, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            val records = ChargeDatabase.getDatabase(this@HistoryActivity).chargeDao()
+                .getAllRecordsOnce()
+                .filter { it.sessionId in selectedIds }
+                .groupBy { it.sessionId }
+                .values
+                .toList()
+            val systemCapacity = BatteryUtils.getDesignCapacityMah()
+            launch(Dispatchers.Main) {
+                showCapacityInputDialog(records, systemCapacity)
+            }
+        }
+    }
+
+    private fun showCapacityInputDialog(
+        sessions: List<List<ChargeRecord>>,
+        systemCapacityMah: Float?
+    ) {
+        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+        val manualCapacity = prefs.getFloat("RATED_CAPACITY_MAH", 0f).takeIf { it > 0f }
+        val input = EditText(this).apply {
+            hint = getString(R.string.health_rated_capacity_hint)
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                    android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(manualCapacity?.let { String.format(Locale.US, "%.0f", it) } ?: "")
+            selectAll()
+        }
+        val padding = (24 * resources.displayMetrics.density).toInt()
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(padding, 0, padding, 0)
+            addView(input)
+        }
+        val systemText = systemCapacityMah?.let {
+            getString(R.string.health_system_capacity, it)
+        } ?: getString(R.string.health_system_capacity_unavailable)
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.health_capacity_title)
+            .setMessage(getString(R.string.health_capacity_input_message, sessions.size, systemText))
+            .setView(container)
+            .setPositiveButton(R.string.health_calculate) { _, _ ->
+                val rawInput = input.text.toString().trim()
+                val typed = rawInput.toFloatOrNull()
+                if (rawInput.isNotEmpty() && (typed == null || typed !in 300f..30_000f)) {
+                    Toast.makeText(this, R.string.health_invalid_rated_capacity, Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                if (typed != null && typed in 300f..30_000f) {
+                    prefs.edit().putFloat("RATED_CAPACITY_MAH", typed).apply()
+                } else if (rawInput.isEmpty()) {
+                    prefs.edit().remove("RATED_CAPACITY_MAH").apply()
+                }
+                val rated = typed?.takeIf { it in 300f..30_000f }
+                    ?: systemCapacityMah
+                showHealthResult(BatteryHealthEstimator.estimate(sessions, rated), rated)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showHealthResult(result: BatteryHealthResult, ratedCapacityMah: Float?) {
+        val message = when (result) {
+            is BatteryHealthResult.Insufficient -> getString(
+                R.string.health_need_more_data,
+                result.totalBatterySpanPercent
+            )
+            BatteryHealthResult.Invalid -> getString(R.string.health_invalid_data)
+            is BatteryHealthResult.Ready -> {
+                val estimate = result.estimate
+                val confidence = when (estimate.confidence) {
+                    BatteryHealthEstimate.Confidence.HIGH -> getString(R.string.health_confidence_high)
+                    BatteryHealthEstimate.Confidence.MEDIUM -> getString(R.string.health_confidence_medium)
+                    BatteryHealthEstimate.Confidence.LOW -> getString(R.string.health_confidence_low)
+                }
+                val details = if (ratedCapacityMah != null && estimate.healthPercent != null) {
+                    getString(
+                        R.string.health_result_with_rating,
+                        estimate.estimatedFullCapacityMah,
+                        ratedCapacityMah,
+                        estimate.healthPercent,
+                        estimate.totalBatterySpanPercent,
+                        confidence
+                    )
+                } else {
+                    getString(
+                        R.string.health_result_without_rating,
+                        estimate.estimatedFullCapacityMah,
+                        estimate.totalBatterySpanPercent,
+                        confidence
+                    )
+                }
+                "$details\n\n${getString(R.string.health_result_notice)}"
+            }
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.health_capacity_title)
+            .setMessage(message)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     private fun writeHistoryJsonToUri(uri: android.net.Uri) {
@@ -399,10 +517,14 @@ class HistoryAdapter(
 ) : RecyclerView.Adapter<HistoryAdapter.ViewHolder>() {
 
     private var sessions = listOf<ChargeSession>()
+    private val selectedIds = mutableSetOf<Long>()
+
+    fun selectedSessionIds(): Set<Long> = selectedIds.toSet()
 
     @SuppressLint("NotifyDataSetChanged")
     fun submitList(list: List<ChargeSession>) {
         sessions = list
+        selectedIds.retainAll(list.mapTo(mutableSetOf()) { it.sessionId })
         notifyDataSetChanged()
     }
 
@@ -440,6 +562,12 @@ class HistoryAdapter(
         val changeSign = if (batChange >= 0) "+$batChange%" else "$batChange%"
         holder.tvBatteryRange.text = context.getString(R.string.history_battery_range, session.startBattery, session.endBattery, changeSign)
 
+        holder.checkHealthSelection.setOnCheckedChangeListener(null)
+        holder.checkHealthSelection.isChecked = session.sessionId in selectedIds
+        holder.checkHealthSelection.setOnCheckedChangeListener { _, checked ->
+            if (checked) selectedIds.add(session.sessionId) else selectedIds.remove(session.sessionId)
+        }
+
         holder.itemView.setOnClickListener {
             onClick(session)
         }
@@ -456,5 +584,6 @@ class HistoryAdapter(
         val tvSessionDuration: TextView = view.findViewById(R.id.tvSessionDuration)
         val tvPowerRange: TextView = view.findViewById(R.id.tvPowerRange)
         val tvBatteryRange: TextView = view.findViewById(R.id.tvBatteryRange)
+        val checkHealthSelection: android.widget.CheckBox = view.findViewById(R.id.checkHealthSelection)
     }
 }

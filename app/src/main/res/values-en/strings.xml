@@ -51,6 +51,24 @@
     <string name="crop_delete_single">Delete only current data point</string>
     
     <string name="history_title">Charging History</string>
+    <string name="estimate_battery_health">Estimate Health</string>
+    <string name="select_for_health_estimate">Select for battery health estimate</string>
+    <string name="health_select_records">Select history records first</string>
+    <string name="health_capacity_title">Battery Health Estimate</string>
+    <string name="health_capacity_input_message">%1$d sessions selected. System rated capacity: %2$s\nEnter a rated capacity to override the system value.</string>
+    <string name="health_system_capacity">%1$.0f mAh</string>
+    <string name="health_system_capacity_unavailable">Unavailable</string>
+    <string name="health_rated_capacity_hint">Rated capacity (mAh)</string>
+    <string name="health_invalid_rated_capacity">Enter a valid rated capacity between 300 and 30000 mAh</string>
+    <string name="health_calculate">Calculate</string>
+    <string name="health_need_more_data">Valid charging span totals %1$d%%; at least 50%% is required. Select more or more complete sessions.</string>
+    <string name="health_invalid_data">The selected sessions contain interruptions, discharge, or invalid samples and cannot be estimated reliably.</string>
+    <string name="health_result_with_rating">Estimated full capacity: %1$.0f mAh\nRated capacity: %2$.0f mAh\nBattery health: %3$.1f%%\nTotal valid charging span: %4$d%%\nConfidence: %5$s</string>
+    <string name="health_result_without_rating">Estimated full capacity: %1$.0f mAh\nTotal valid charging span: %2$d%%\nConfidence: %3$s\n\nRated capacity is unavailable, so battery health cannot be calculated yet. Go back and enter it manually.</string>
+    <string name="health_confidence_high">High</string>
+    <string name="health_confidence_medium">Medium</string>
+    <string name="health_confidence_low">Low</string>
+    <string name="health_result_notice">This is estimated by integrating charging current. Select several complete, uninterrupted charging sessions for better accuracy.</string>
     <string name="clear_all">Clear All</string>
     <string name="dialog_clear_all_title">Clear All History</string>
     <string name="dialog_clear_all_msg">Are you sure you want to clear all history records? This cannot be undone!</string>

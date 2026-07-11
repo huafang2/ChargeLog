@@ -8,6 +8,24 @@ import java.io.File
 
 object BatteryUtils {
 
+    fun getDesignCapacityMah(): Float? {
+        val root = File("/sys/class/power_supply")
+        val supplies = buildList {
+            add(File(root, "battery"))
+            root.listFiles()?.forEach { supply ->
+                if (supply.name != "battery" &&
+                    readSysfsString(File(supply, "type").path)?.equals("Battery", true) == true
+                ) add(supply)
+            }
+        }
+        for (supply in supplies.distinctBy { it.path }) {
+            val raw = readSysfs(File(supply, "charge_full_design").path) ?: continue
+            val capacityMah = if (raw > 100_000L) raw / 1000f else raw.toFloat()
+            if (capacityMah in 300f..30_000f) return capacityMah
+        }
+        return null
+    }
+
     fun getVoltage(intent: Intent): Float {
         // Try sysfs first for higher precision, fallback to standard API
         val sysfsVoltage = readSysfs("/sys/class/power_supply/battery/voltage_now")

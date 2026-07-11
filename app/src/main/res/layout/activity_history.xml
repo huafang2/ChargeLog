@@ -25,6 +25,13 @@
             android:textColor="?android:attr/textColorPrimary"/>
 
         <Button
+            android:id="@+id/btnEstimateHealth"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/estimate_battery_health"
+            android:layout_marginEnd="8dp" />
+
+        <Button
             android:id="@+id/btnClearAll"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

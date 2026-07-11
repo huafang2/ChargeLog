@@ -51,6 +51,24 @@
     <string name="crop_delete_single">仅删除当前时刻的数据点</string>
     
     <string name="history_title">充电历史记录</string>
+    <string name="estimate_battery_health">估算健康度</string>
+    <string name="select_for_health_estimate">选择用于健康度估算</string>
+    <string name="health_select_records">请先选择历史记录</string>
+    <string name="health_capacity_title">电池健康度估算</string>
+    <string name="health_capacity_input_message">已选择 %1$d 次记录。系统额定容量: %2$s\n可手动填写额定容量覆盖系统值。</string>
+    <string name="health_system_capacity">%1$.0f mAh</string>
+    <string name="health_system_capacity_unavailable">无法读取</string>
+    <string name="health_rated_capacity_hint">额定容量 (mAh)</string>
+    <string name="health_invalid_rated_capacity">请输入 300–30000 mAh 之间的有效额定容量</string>
+    <string name="health_calculate">计算</string>
+    <string name="health_need_more_data">有效充电跨度累计 %1$d%%，至少需要 50%%。请增加选择或选择更完整的记录。</string>
+    <string name="health_invalid_data">所选记录存在中断、放电或异常采样，无法可靠估算。</string>
+    <string name="health_result_with_rating">估算满充容量: %1$.0f mAh\n额定容量: %2$.0f mAh\n电池健康度: %3$.1f%%\n累计有效充电跨度: %4$d%%\n可信度: %5$s</string>
+    <string name="health_result_without_rating">估算满充容量: %1$.0f mAh\n累计有效充电跨度: %2$d%%\n可信度: %3$s\n\n未取得额定容量，暂时无法计算健康度。请返回后填写额定容量。</string>
+    <string name="health_confidence_high">高</string>
+    <string name="health_confidence_medium">中</string>
+    <string name="health_confidence_low">低</string>
+    <string name="health_result_notice">这是基于充电电流积分的估算值，建议选择多次完整、连续的充电记录。</string>
     <string name="clear_all">清空所有</string>
     <string name="dialog_clear_all_title">清空所有历史数据</string>
     <string name="dialog_clear_all_msg">确定要清空所有充电历史记录吗？该操作无法恢复！</string>
