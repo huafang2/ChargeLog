@@ -1,4 +1,4 @@
-Academic and Non-Commercial Use License v1.1
+Academic and Non-Commercial Use License v1.2
 
 Copyright (c) 2026 The Copyright Holder
 
@@ -42,8 +42,14 @@ The following activities are permitted and are not considered Commercial Use:
 * Non-commercial open-source development;
 * Non-profit research activities.
 
+DISCLAIMER OF WARRANTY AND LIABILITY
+
+This Software is an independently developed project provided for personal, educational, and non-commercial research purposes. Although the copyright holder has made reasonable efforts to develop and review the Software, it has not undergone comprehensive or formal testing. The Software may contain bugs, errors, security vulnerabilities, or other defects. The copyright holder makes no representation or warranty that the Software is accurate, reliable, secure, uninterrupted, or fit for any particular purpose.
+
+You use the Software entirely at your own risk. The Software is not intended for use in safety-critical systems, medical devices, emergency response, or any situation where a failure could result in death, personal injury, property damage, data loss, or other serious harm.
+
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
 
-IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY ACCIDENT, INJURY, LOSS, DAMAGE, CLAIM, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE, INCLUDING ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
 Commercial licensing may be available upon request from the copyright holder.
