@@ -1,13 +1,18 @@
 package per.jau.chargelog.utils
 
+import android.os.BatteryManager
 import per.jau.chargelog.data.ChargeRecord
 
 data class BatteryHealthEstimate(
     val estimatedFullCapacityMah: Float,
-    val chargedCapacityMah: Float,
+    val positiveChargedCapacityMah: Float,
+    val dischargedCapacityMah: Float,
+    val netChargedCapacityMah: Float,
     val totalBatterySpanPercent: Int,
     val healthPercent: Float?,
-    val confidence: Confidence
+    val confidence: Confidence,
+    val hasUnknownBatteryStatus: Boolean,
+    val hasLegacyFullTail: Boolean
 ) {
     enum class Confidence { LOW, MEDIUM, HIGH }
 }
@@ -25,9 +30,13 @@ object BatteryHealthEstimator {
         sessions: List<List<ChargeRecord>>,
         ratedCapacityMah: Float?
     ): BatteryHealthResult {
-        var totalChargedMah = 0.0
+        var totalPositiveMah = 0.0
+        var totalDischargedMah = 0.0
+        var totalNetMah = 0.0
         var totalSpan = 0
         var hasGap = false
+        var hasUnknownStatus = false
+        var hasLegacyFullTail = false
         var acceptedSessions = 0
 
         sessions.forEach { records ->
@@ -46,43 +55,79 @@ object BatteryHealthEstimator {
 
             var runStartLevel: Int? = null
             var runEndLevel = 0
-            var runMah = 0.0
-            var bestSpan = 0
-            var bestMah = 0.0
+            var runPositiveMah = 0.0
+            var runDischargedMah = 0.0
+            var runHasUnknownStatus = false
+            var runHasLegacyFullTail = false
+
+            var sessionPositiveMah = 0.0
+            var sessionDischargedMah = 0.0
+            var sessionNetMah = 0.0
+            var sessionSpan = 0
+            var sessionHasUnknownStatus = false
+            var sessionHasLegacyFullTail = false
+            var sessionAccepted = false
 
             fun finishRun() {
                 val start = runStartLevel ?: return
                 val span = runEndLevel - start
-                if (span > bestSpan && runMah > 0.0) {
-                    bestSpan = span
-                    bestMah = runMah
+                val netMah = runPositiveMah - runDischargedMah
+                if (span > 0 && netMah > 0.0) {
+                    sessionPositiveMah += runPositiveMah
+                    sessionDischargedMah += runDischargedMah
+                    sessionNetMah += netMah
+                    sessionSpan += span
+                    sessionHasUnknownStatus = sessionHasUnknownStatus || runHasUnknownStatus
+                    sessionHasLegacyFullTail = sessionHasLegacyFullTail || runHasLegacyFullTail
+                    sessionAccepted = true
                 }
                 runStartLevel = null
-                runMah = 0.0
+                runPositiveMah = 0.0
+                runDischargedMah = 0.0
+                runHasUnknownStatus = false
+                runHasLegacyFullTail = false
             }
 
-            sorted.zipWithNext().forEach { (a, b) ->
+            for ((a, b) in sorted.zipWithNext()) {
+                if (a.batteryStatus == BatteryManager.BATTERY_STATUS_FULL) {
+                    finishRun()
+                    break
+                }
                 val deltaMs = b.timestamp - a.timestamp
-                if (deltaMs <= 0) return@forEach
+                if (deltaMs <= 0) continue
                 if (deltaMs > maxAllowedGap) {
                     hasGap = true
                     finishRun()
-                    return@forEach
-                }
-                if (a.current < 0f || b.current < 0f || b.batteryLevel < a.batteryLevel) {
-                    finishRun()
-                    return@forEach
+                    continue
                 }
                 if (runStartLevel == null) runStartLevel = a.batteryLevel
                 runEndLevel = b.batteryLevel
-                val averageCurrentA = (a.current.toDouble() + b.current.toDouble()) / 2.0
-                runMah += averageCurrentA * deltaMs / 3_600_000.0 * 1000.0
+                val integral = integrateCurrentInterval(a.current.toDouble(), b.current.toDouble(), deltaMs)
+                runPositiveMah += integral.positiveMah
+                runDischargedMah += integral.dischargedMah
+
+                val intervalHasUnknown =
+                    a.batteryStatus == BatteryManager.BATTERY_STATUS_UNKNOWN ||
+                            b.batteryStatus == BatteryManager.BATTERY_STATUS_UNKNOWN
+                runHasUnknownStatus = runHasUnknownStatus || intervalHasUnknown
+                runHasLegacyFullTail = runHasLegacyFullTail || (
+                    intervalHasUnknown && (a.batteryLevel == 100 || b.batteryLevel == 100)
+                )
+
+                if (b.batteryStatus == BatteryManager.BATTERY_STATUS_FULL) {
+                    finishRun()
+                    break
+                }
             }
             finishRun()
 
-            if (bestSpan > 0 && bestMah > 0.0) {
-                totalChargedMah += bestMah
-                totalSpan += bestSpan
+            if (sessionAccepted) {
+                totalPositiveMah += sessionPositiveMah
+                totalDischargedMah += sessionDischargedMah
+                totalNetMah += sessionNetMah
+                totalSpan += sessionSpan
+                hasUnknownStatus = hasUnknownStatus || sessionHasUnknownStatus
+                hasLegacyFullTail = hasLegacyFullTail || sessionHasLegacyFullTail
                 acceptedSessions++
             }
         }
@@ -90,9 +135,9 @@ object BatteryHealthEstimator {
         if (totalSpan < MIN_TOTAL_SPAN_PERCENT) {
             return BatteryHealthResult.Insufficient(totalSpan)
         }
-        if (totalChargedMah <= 0.0 || acceptedSessions == 0) return BatteryHealthResult.Invalid
+        if (totalNetMah <= 0.0 || acceptedSessions == 0) return BatteryHealthResult.Invalid
 
-        val estimatedFullMah = (totalChargedMah / (totalSpan / 100.0)).toFloat()
+        val estimatedFullMah = (totalNetMah / (totalSpan / 100.0)).toFloat()
         if (!estimatedFullMah.isFinite() || estimatedFullMah !in 300f..30_000f) {
             return BatteryHealthResult.Invalid
         }
@@ -100,7 +145,8 @@ object BatteryHealthEstimator {
             ?.takeIf { it.isFinite() && it > 0f }
             ?.let { estimatedFullMah / it * 100f }
         val confidence = when {
-            hasGap || (health != null && health !in 65f..135f) -> BatteryHealthEstimate.Confidence.LOW
+            hasGap || hasLegacyFullTail || (health != null && health !in 65f..135f) ->
+                BatteryHealthEstimate.Confidence.LOW
             totalSpan >= 100 && acceptedSessions >= 2 -> BatteryHealthEstimate.Confidence.HIGH
             else -> BatteryHealthEstimate.Confidence.MEDIUM
         }
@@ -108,11 +154,54 @@ object BatteryHealthEstimator {
         return BatteryHealthResult.Ready(
             BatteryHealthEstimate(
                 estimatedFullCapacityMah = estimatedFullMah,
-                chargedCapacityMah = totalChargedMah.toFloat(),
+                positiveChargedCapacityMah = totalPositiveMah.toFloat(),
+                dischargedCapacityMah = totalDischargedMah.toFloat(),
+                netChargedCapacityMah = totalNetMah.toFloat(),
                 totalBatterySpanPercent = totalSpan,
                 healthPercent = health,
-                confidence = confidence
+                confidence = confidence,
+                hasUnknownBatteryStatus = hasUnknownStatus,
+                hasLegacyFullTail = hasLegacyFullTail
             )
         )
+    }
+
+    private data class CurrentIntegral(
+        val positiveMah: Double,
+        val dischargedMah: Double
+    )
+
+    private fun integrateCurrentInterval(
+        startCurrentA: Double,
+        endCurrentA: Double,
+        deltaMs: Long
+    ): CurrentIntegral {
+        val durationHours = deltaMs / 3_600_000.0
+        if (startCurrentA >= 0.0 && endCurrentA >= 0.0) {
+            return CurrentIntegral(
+                positiveMah = (startCurrentA + endCurrentA) / 2.0 * durationHours * 1000.0,
+                dischargedMah = 0.0
+            )
+        }
+        if (startCurrentA <= 0.0 && endCurrentA <= 0.0) {
+            return CurrentIntegral(
+                positiveMah = 0.0,
+                dischargedMah = -(startCurrentA + endCurrentA) / 2.0 * durationHours * 1000.0
+            )
+        }
+
+        val totalMagnitude = kotlin.math.abs(startCurrentA) + kotlin.math.abs(endCurrentA)
+        val crossingFraction = kotlin.math.abs(startCurrentA) / totalMagnitude
+        return if (startCurrentA > 0.0) {
+            CurrentIntegral(
+                positiveMah = startCurrentA * crossingFraction * durationHours * 500.0,
+                dischargedMah = -endCurrentA * (1.0 - crossingFraction) * durationHours * 500.0
+            )
+        } else {
+            CurrentIntegral(
+                positiveMah = endCurrentA * (1.0 - crossingFraction) * durationHours * 500.0,
+                dischargedMah = -startCurrentA * crossingFraction * durationHours * 500.0
+            )
+        }
     }
 }

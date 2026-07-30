@@ -1,5 +1,7 @@
 package per.jau.chargelog.data
 
+import android.os.BatteryManager
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -14,5 +16,6 @@ data class ChargeRecord(
     val batteryLevel: Int, // Replaced protocol with batteryLevel
     val screenState: Int = 2, // 0: SCREEN_OFF, 1: SCREEN_ON, 2: SCREEN_UNKNOWN
     val maxVoltage: Float? = null,
-    val maxCurrent: Float? = null
+    val maxCurrent: Float? = null,
+    @ColumnInfo(defaultValue = "1") val batteryStatus: Int = BatteryManager.BATTERY_STATUS_UNKNOWN
 )

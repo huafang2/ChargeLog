@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [ChargeRecord::class], version = 5, exportSchema = false)
+@Database(entities = [ChargeRecord::class], version = 6, exportSchema = false)
 abstract class ChargeDatabase : RoomDatabase() {
     abstract fun chargeDao(): ChargeDao
 
@@ -26,6 +26,13 @@ abstract class ChargeDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // Existing rows predate status logging and must retain legacy estimation behavior.
+                db.execSQL("ALTER TABLE charge_records ADD COLUMN batteryStatus INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
         fun getDatabase(context: Context): ChargeDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -33,7 +40,7 @@ abstract class ChargeDatabase : RoomDatabase() {
                     ChargeDatabase::class.java,
                     "charge_database"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .fallbackToDestructiveMigration(false)
                 .build()
                 INSTANCE = instance
