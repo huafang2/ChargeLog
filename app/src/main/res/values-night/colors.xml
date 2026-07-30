@@ -4,4 +4,32 @@
     <color name="dashboard_value_realtime">#00E676</color>
     <color name="dashboard_value_selected">#FFAB40</color>
     <color name="dashboard_value_summary">#B388FF</color>
+    <color name="dashboard_icon_tint">#E2E8F0</color>
+
+    <!-- Card & Surface colors (Dark Theme) -->
+    <color name="card_bg_light">#1E2430</color>
+    <color name="card_stroke_light">#2D3748</color>
+    <color name="metric_bg_voltage_light">#132A24</color>
+    <color name="metric_bg_current_light">#2A2013</color>
+    <color name="metric_bg_power_light">#23172F</color>
+    <color name="metric_bg_battery_light">#152438</color>
+
+    <color name="fast_limit_bg_start">#2E1F47</color>
+    <color name="fast_limit_bg_end">#1F2540</color>
+    <color name="fast_limit_stroke">#B388FF</color>
+
+    <color name="tab_selected_text">#FFFFFF</color>
+    <color name="tab_unselected_text">#A8B1C2</color>
+    <color name="tab_indicator_tint">#4C3D78</color>
+    <color name="tab_liquid_start">#5B4B8A</color>
+    <color name="tab_liquid_end">#34436F</color>
+    <color name="tab_liquid_stroke">#BDA7FF</color>
+    <color name="tab_liquid_shadow">#66000000</color>
+    <color name="tab_ripple">#33B388FF</color>
+
+    <!-- Status badge colors (Dark Theme) -->
+    <color name="status_recording_bg">#1B382B</color>
+    <color name="status_recording_text">#69F0AE</color>
+    <color name="status_stopped_bg">#2D3748</color>
+    <color name="status_stopped_text">#94A3B8</color>
 </resources>

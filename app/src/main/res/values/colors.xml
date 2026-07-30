@@ -1,15 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <color name="purple_200">#94A3B8</color>
+    <color name="purple_500">#334155</color>
+    <color name="purple_700">#0F172A</color>
+    <color name="teal_200">#64748B</color>
+    <color name="teal_700">#475569</color>
+    <color name="black">#0F172A</color>
+    <color name="white">#FFFFFF</color>
     
-    <!-- Dashboard values colors -->
-    <color name="dashboard_value_realtime">#00875A</color>
-    <color name="dashboard_value_selected">#D84315</color>
-    <color name="dashboard_value_summary">#FF6200EE</color>
+    <!-- Dashboard values colors (Muted Classy) -->
+    <color name="dashboard_value_realtime">#0F766E</color>
+    <color name="dashboard_value_selected">#B45309</color>
+    <color name="dashboard_value_summary">#4338CA</color>
+    <color name="dashboard_icon_tint">#334155</color>
+
+    <!-- Refined Minimalist Palette -->
+    <color name="color_primary">#0F172A</color>
+    <color name="color_accent_green">#15803D</color>
+    <color name="color_accent_cyan">#0F766E</color>
+    <color name="color_accent_amber">#B45309</color>
+    <color name="color_accent_purple">#4338CA</color>
+    <color name="color_accent_red">#991B1B</color>
+
+    <!-- Card & Surface colors (Light Theme - Subtle & Clean) -->
+    <color name="card_bg_light">#FFFFFF</color>
+    <color name="card_stroke_light">#E2E8F0</color>
+    <color name="metric_bg_voltage_light">#FAFAFA</color>
+    <color name="metric_bg_current_light">#FAFAFA</color>
+    <color name="metric_bg_power_light">#FAFAFA</color>
+    <color name="metric_bg_battery_light">#FAFAFA</color>
+
+    <color name="fast_limit_bg_start">#EEF2FF</color>
+    <color name="fast_limit_bg_end">#F5F3FF</color>
+    <color name="fast_limit_stroke">#6366F1</color>
+
+    <color name="tab_selected_text">#312E81</color>
+    <color name="tab_unselected_text">#64748B</color>
+    <color name="tab_indicator_tint">#E0E7FF</color>
+    <color name="tab_liquid_start">#E0E7FF</color>
+    <color name="tab_liquid_end">#F5F3FF</color>
+    <color name="tab_liquid_stroke">#818CF8</color>
+    <color name="tab_liquid_shadow">#293F51B5</color>
+    <color name="tab_ripple">#204338CA</color>
+
+    <!-- Status badge colors -->
+    <color name="status_recording_bg">#F0FDF4</color>
+    <color name="status_recording_text">#166534</color>
+    <color name="status_stopped_bg">#F8FAFC</color>
+    <color name="status_stopped_text">#64748B</color>
+
+    <!-- Button Background & Text Colors -->
+    <color name="btn_bg_obsidian">#0F172A</color>
+    <color name="btn_bg_slate_light">#F1F5F9</color>
+    <color name="btn_bg_slate_border">#E2E8F0</color>
+    <color name="btn_bg_rose_light">#FEE2E2</color>
+    <color name="btn_bg_ghost_light">#F8FAFC</color>
+    <color name="btn_text_danger">#991B1B</color>
+    <color name="btn_text_slate">#334155</color>
+    <color name="btn_text_ghost">#64748B</color>
 </resources>

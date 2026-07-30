@@ -2,6 +2,11 @@ package per.jau.chargelog
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -10,9 +15,15 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.transition.ChangeBounds
+import android.transition.Fade
+import android.transition.TransitionManager
+import android.transition.TransitionSet
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.PathInterpolator
 import android.widget.Button
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
@@ -48,6 +59,9 @@ import per.jau.chargelog.data.ChargeDatabase
 import per.jau.chargelog.data.ChargeRecord
 import per.jau.chargelog.service.ChargeLoggingService
 import per.jau.chargelog.utils.BatteryUtils
+import per.jau.chargelog.utils.BatteryFlow
+import per.jau.chargelog.utils.FastChargeLimit
+import per.jau.chargelog.utils.HistoryRetention
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -85,13 +99,23 @@ class MainActivity : AppCompatActivity() {
     private lateinit var layoutBgReportBanner: View
     private lateinit var tabLayout: TabLayout
     private lateinit var layoutInterval: View
+    private lateinit var layoutHistoryRetention: View
+    private lateinit var layoutSettingsRow: View
+    private lateinit var tvHistoryRetentionValue: TextView
     private lateinit var switchBgReport: androidx.appcompat.widget.SwitchCompat
 
     private lateinit var tvCurrentVoltage: TextView
     private lateinit var tvCurrentCurrent: TextView
     private lateinit var tvCurrentPower: TextView
     private lateinit var tvCurrentProtocol: TextView
+    private lateinit var layoutMaxChargingLimit: View
     private lateinit var tvCurrentMaxPower: TextView
+    private var maxChargingLimitAnimator: AnimatorSet? = null
+    private var maxChargingLimitTargetVisible = false
+    private var maxChargingLimitVoltage: Float? = null
+    private var maxChargingLimitCurrent: Float? = null
+    private var maxChargingLimitRangeMin: Float? = null
+    private var maxChargingLimitRangeMax: Float? = null
 
     private var currentRecords: List<ChargeRecord> = emptyList()
     private var selectedTabIndex = 2
@@ -137,6 +161,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        if (toolbar != null) {
+            setSupportActionBar(toolbar)
+        }
+
         if (savedInstanceState != null) {
             selectedTabIndex = savedInstanceState.getInt("SELECTED_TAB_INDEX", 2)
         }
@@ -171,6 +200,9 @@ class MainActivity : AppCompatActivity() {
             putBoolean("USER_EXITED", true)
         }
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
+        lifecycleScope.launch(Dispatchers.IO) {
+            HistoryRetention.cleanup(this@MainActivity)
+        }
 
         lineChart = findViewById(R.id.lineChart)
         sbChartScrubber = findViewById(R.id.sbChartScrubber)
@@ -184,7 +216,7 @@ class MainActivity : AppCompatActivity() {
         layoutBgReportBanner = findViewById(R.id.layoutBgReportBanner)
         val btnBannerClose = findViewById<Button>(R.id.btnBannerClose)
         btnBannerClose.setOnClickListener {
-            layoutBgReportBanner.visibility = View.GONE
+            setViewsVisibleAnimated(layoutBgReportBanner to false)
         }
         tabLayout = findViewById(R.id.tabLayout)
 
@@ -192,12 +224,14 @@ class MainActivity : AppCompatActivity() {
         tvCurrentCurrent = findViewById(R.id.tvCurrentCurrent)
         tvCurrentPower = findViewById(R.id.tvCurrentPower)
         tvCurrentProtocol = findViewById(R.id.tvCurrentProtocol)
+        layoutMaxChargingLimit = findViewById(R.id.layoutMaxChargingLimit)
         tvCurrentMaxPower = findViewById(R.id.tvCurrentMaxPower)
+        restoreMaxChargingLimitState(savedInstanceState)
 
         val tvFooter = findViewById<TextView>(R.id.tvFooter)
-        tvFooter.text = "Created by Jau v${BuildConfig.VERSION_NAME}"
+        tvFooter.text = getString(R.string.footer_version_build, BuildConfig.VERSION_NAME, BuildConfig.BUILD_DATE)
         tvFooter.setOnClickListener {
-            AlertDialog.Builder(this)
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
                 .setTitle(getString(R.string.github_dialog_title))
                 .setMessage("https://github.com/huafang2/ChargeLog")
                 .setPositiveButton(getString(R.string.github_dialog_open)) { _, _ ->
@@ -214,6 +248,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         layoutInterval = findViewById(R.id.layoutInterval)
+        layoutHistoryRetention = findViewById(R.id.layoutHistoryRetention)
+        layoutSettingsRow = findViewById(R.id.layoutSettingsRow)
+        tvHistoryRetentionValue = findViewById(R.id.tvHistoryRetentionValue)
         switchBgReport = findViewById(R.id.switchBgReport)
         switchBgReport.isChecked = prefs.getBoolean("ENABLE_BG_REPORT", true)
         switchBgReport.setOnCheckedChangeListener { _, isChecked ->
@@ -236,6 +273,7 @@ class MainActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
         })
 
+        setupHistoryRetention(prefs)
         setupTabs()
         setupChart()
         setupScrubber()
@@ -248,24 +286,27 @@ class MainActivity : AppCompatActivity() {
         handleIntent(intent)
 
         btnStart.setOnClickListener {
-            getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-                .edit {
-                    putBoolean("IS_RECORDING", true)
-                }
-            // Make sure service is running
-            startForegroundService(Intent(this, ChargeLoggingService::class.java))
+            val startIntent = Intent(this, ChargeLoggingService::class.java).apply {
+                action = ChargeLoggingService.ACTION_START_RECORDING
+            }
+            startForegroundService(startIntent)
             tvStatus.text = getString(R.string.recording)
-            updateButtonStates()
+            setViewsVisibleAnimated(
+                btnStart to false,
+                btnStop to true
+            )
         }
 
         btnStop.setOnClickListener {
-            getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-                .edit {
-                    putBoolean("IS_RECORDING", false)
-                        .putBoolean("FORCE_NEW_SESSION", true)
-                }
+            val stopIntent = Intent(this, ChargeLoggingService::class.java).apply {
+                action = ChargeLoggingService.ACTION_STOP_RECORDING
+            }
+            startForegroundService(stopIntent)
             tvStatus.text = getString(R.string.stopped)
-            updateButtonStates()
+            setViewsVisibleAnimated(
+                btnStart to true,
+                btnStop to false
+            )
         }
 
         btnExit.setOnClickListener {
@@ -294,7 +335,7 @@ class MainActivity : AppCompatActivity() {
             val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
             val sessionStart = prefs.getLong("CURRENT_SESSION_START", 0L)
             if (isRecording) {
-                AlertDialog.Builder(this)
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.dialog_tip_title)
                     .setMessage(R.string.dialog_clear_confirm_msg)
                     .setPositiveButton(R.string.confirm_clear) { _, _ ->
@@ -333,59 +374,69 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnShowData.setOnClickListener {
-            if (currentRecords.isNotEmpty()) {
+            val recordsSnapshot = currentRecords.toList()
+            if (recordsSnapshot.isEmpty()) {
+                android.widget.Toast.makeText(this, "暂无数据", android.widget.Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            try {
                 val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_raw_data, null)
                 val rvRawData = dialogView.findViewById<RecyclerView>(R.id.rvRawData)
                 rvRawData.layoutManager = LinearLayoutManager(this)
-                rvRawData.adapter = RawDataAdapter(currentRecords)
+                rvRawData.adapter = RawDataAdapter(recordsSnapshot)
                 
-                val dialog = AlertDialog.Builder(this)
+                val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
                     .setView(dialogView)
                     .create()
                 
                 val tvRawSummary = dialogView.findViewById<TextView>(R.id.tvRawSummary)
-                val chargePoints = currentRecords.filter { it.power >= 0 }
-                val dischargePoints = currentRecords.filter { it.power < 0 }
+                val chargePoints = recordsSnapshot.filter { it.power > 0 }
+                val dischargePoints = recordsSnapshot.filter { it.power < 0 }
 
                 val summaryBuilder = StringBuilder()
 
                 if (chargePoints.isNotEmpty()) {
-                    val minCP = chargePoints.minOf { it.power }
-                    val maxCP = chargePoints.maxOf { it.power }
-                    val minCC = chargePoints.minOf { it.current }
-                    val maxCC = chargePoints.maxOf { it.current }
+                    val minCP = String.format(Locale.getDefault(), "%.2f", chargePoints.minOf { it.power })
+                    val maxCP = String.format(Locale.getDefault(), "%.2f", chargePoints.maxOf { it.power })
+                    val minCC = String.format(Locale.getDefault(), "%.2f", chargePoints.minOf { it.current })
+                    val maxCC = String.format(Locale.getDefault(), "%.2f", chargePoints.maxOf { it.current })
                     summaryBuilder.append(getString(R.string.charge_power_summary, minCP, maxCP))
                     summaryBuilder.append(getString(R.string.charge_current_summary, minCC, maxCC))
                 }
 
                 if (dischargePoints.isNotEmpty()) {
-                    val minDP = dischargePoints.minOf { abs(it.power) }
-                    val maxDP = dischargePoints.maxOf { abs(it.power) }
-                    val minDC = dischargePoints.minOf { abs(it.current) }
-                    val maxDC = dischargePoints.maxOf { abs(it.current) }
+                    val minDP = String.format(Locale.getDefault(), "%.2f", dischargePoints.minOf { it.power })
+                    val maxDP = String.format(Locale.getDefault(), "%.2f", dischargePoints.maxOf { it.power })
+                    val minDC = String.format(Locale.getDefault(), "%.2f", dischargePoints.minOf { it.current })
+                    val maxDC = String.format(Locale.getDefault(), "%.2f", dischargePoints.maxOf { it.current })
                     summaryBuilder.append(getString(R.string.discharge_power_summary, minDP, maxDP))
                     summaryBuilder.append(getString(R.string.discharge_current_summary, minDC, maxDC))
                 }
 
-                val startBat = currentRecords.first().batteryLevel
-                val endBat = currentRecords.last().batteryLevel
-                val batChange = endBat - startBat
-                val changeSign = if (batChange >= 0) "+$batChange%" else "$batChange%"
-                summaryBuilder.append(getString(R.string.battery_change, startBat, endBat, changeSign))
+                if (recordsSnapshot.isNotEmpty()) {
+                    val startBat = recordsSnapshot.first().batteryLevel
+                    val endBat = recordsSnapshot.last().batteryLevel
+                    val batChange = endBat - startBat
+                    val changeSign = if (batChange >= 0) "+$batChange%" else "$batChange%"
+                    summaryBuilder.append(getString(R.string.battery_change, startBat, endBat, changeSign))
+                }
 
                 tvRawSummary.text = summaryBuilder.toString()
                 tvRawSummary.visibility = View.VISIBLE
 
-                dialogView.findViewById<View>(R.id.btnExportCSV).setOnClickListener {
+                dialogView.findViewById<View>(R.id.btnExportCSV)?.setOnClickListener {
                     dialog.dismiss()
                     val fileName = "ChargeLog_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.csv"
                     exportCsvLauncher.launch(fileName)
                 }
 
-                dialogView.findViewById<View>(R.id.btnCloseDialog).setOnClickListener {
+                dialogView.findViewById<View>(R.id.btnCloseDialog)?.setOnClickListener {
                     dialog.dismiss()
                 }
                 dialog.show()
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Error showing raw data dialog", e)
+                android.widget.Toast.makeText(this, "打开数据失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -420,28 +471,58 @@ class MainActivity : AppCompatActivity() {
     private fun updateButtonStates() {
         val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
         if (historySessionId != -1L) {
-            btnStart.visibility = View.GONE
-            btnStop.visibility = View.GONE
-            btnClear.visibility = View.GONE
-            btnExit.visibility = View.GONE
-            btnHistory.visibility = View.GONE
-            layoutBgReportBanner.visibility = View.GONE
-            layoutInterval.visibility = View.GONE
-            switchBgReport.visibility = View.GONE
-        } else {
-            val recording = isRecording()
-            if (recording) {
-                btnStart.visibility = View.GONE
-                btnStop.visibility = View.VISIBLE
-            } else {
-                btnStart.visibility = View.VISIBLE
-                btnStop.visibility = View.GONE
+            setViewsVisibleAnimated(
+                btnStart to false,
+                btnStop to false,
+                btnClear to false,
+                btnExit to false,
+                btnHistory to false,
+                layoutBgReportBanner to false,
+                layoutInterval to false,
+                layoutSettingsRow to false
+            )
+            return
+        }
+
+        val recording = isRecording()
+        setViewsVisibleAnimated(
+            btnStart to !recording,
+            btnStop to recording,
+            btnClear to true,
+            btnExit to true,
+            btnHistory to true,
+            layoutInterval to true,
+            layoutSettingsRow to true
+        )
+    }
+
+    private fun setViewsVisibleAnimated(vararg changes: Pair<View, Boolean>) {
+        val pendingChanges = changes.filter { (view, visible) ->
+            view.visibility != if (visible) View.VISIBLE else View.GONE
+        }
+        if (pendingChanges.isEmpty()) return
+
+        val root = findViewById<ViewGroup>(R.id.main)
+        if (root.isLaidOut && ValueAnimator.areAnimatorsEnabled()) {
+            val changeBounds = ChangeBounds().apply {
+                excludeTarget(layoutMaxChargingLimit, true)
             }
-            btnClear.visibility = View.VISIBLE
-            btnExit.visibility = View.VISIBLE
-            btnHistory.visibility = View.VISIBLE
-            layoutInterval.visibility = View.VISIBLE
-            switchBgReport.visibility = View.VISIBLE
+            val fade = Fade().apply {
+                excludeTarget(layoutMaxChargingLimit, true)
+            }
+            val transition = TransitionSet().apply {
+                ordering = TransitionSet.ORDERING_TOGETHER
+                addTransition(changeBounds)
+                addTransition(fade)
+                duration = 200L
+                interpolator = PathInterpolator(0.4f, 0f, 0.2f, 1f)
+            }
+            TransitionManager.beginDelayedTransition(root, transition)
+        }
+
+        pendingChanges.forEach { (view, visible) ->
+            view.animate().cancel()
+            view.visibility = if (visible) View.VISIBLE else View.GONE
         }
     }
 
@@ -450,6 +531,69 @@ class MainActivity : AppCompatActivity() {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
             }
+        }
+    }
+
+    private fun setupHistoryRetention(prefs: android.content.SharedPreferences) {
+        fun labelFor(days: Int): String = if (days == HistoryRetention.FOREVER) {
+            getString(R.string.history_retention_forever)
+        } else {
+            getString(R.string.history_retention_days, days)
+        }
+
+        val selectedDays = prefs.getInt(
+            HistoryRetention.PREF_KEY_DAYS,
+            HistoryRetention.FOREVER
+        )
+        tvHistoryRetentionValue.text = labelFor(selectedDays)
+        layoutHistoryRetention.setOnClickListener {
+            val options = HistoryRetention.OPTIONS_DAYS
+            val currentDays = prefs.getInt(
+                HistoryRetention.PREF_KEY_DAYS,
+                HistoryRetention.FOREVER
+            )
+
+            val popup = androidx.appcompat.widget.PopupMenu(
+                this,
+                layoutHistoryRetention,
+                Gravity.END
+            )
+            options.forEachIndexed { index, days ->
+                val title = android.text.SpannableString(labelFor(days))
+                if (days == currentDays) {
+                    title.setSpan(
+                        android.text.style.ForegroundColorSpan(colorSummary),
+                        0,
+                        title.length,
+                        android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                    title.setSpan(
+                        android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                        0,
+                        title.length,
+                        android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                }
+                popup.menu.add(
+                    android.view.Menu.NONE,
+                    index,
+                    index,
+                    title
+                )
+            }
+            popup.setOnMenuItemClickListener { item ->
+                val days = options.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
+                prefs.edit { putInt(HistoryRetention.PREF_KEY_DAYS, days) }
+                tvHistoryRetentionValue.text = labelFor(days)
+                val message = if (days == HistoryRetention.FOREVER) {
+                    R.string.history_retention_saved
+                } else {
+                    R.string.history_retention_next_start
+                }
+                android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
+                true
+            }
+            popup.show()
         }
     }
 
@@ -615,37 +759,39 @@ class MainActivity : AppCompatActivity() {
 
             flow.collectLatest { records ->
                 if (records.isEmpty()) {
+                    currentRecords = emptyList()
+                    lineChart.clear()
+                    setViewsVisibleAnimated(
+                        btnShowData to false,
+                        sbChartScrubber to false
+                    )
+                    menuDeleteSegment?.isVisible = false
                     val latest = dao.getLatestRecord()
                     if (latest != null) {
-                        currentRecords = listOf(latest)
                         chartBaseTime = latest.timestamp
                         updateDashboardText(latest, false)
-                        updateChartData()
-                        btnShowData.visibility = View.VISIBLE
                     } else {
-                        currentRecords = emptyList()
-                        lineChart.clear()
                         resetDashboardTextSize()
-                        tvCurrentVoltage.text = "电压: -- V"
-                        tvCurrentCurrent.text = "电流: -- A"
-                        tvCurrentPower.text = "功率: -- W"
-                        tvCurrentProtocol.text = "电量: --"
-                        btnShowData.visibility = View.GONE
-                        menuDeleteSegment?.isVisible = false
+                        tvCurrentVoltage.text = "${getString(R.string.voltage_label)}-- V"
+                        tvCurrentCurrent.text = "${getString(R.string.current_label)}-- A"
+                        tvCurrentPower.text = "${getString(R.string.power_label)}-- W"
+                        tvCurrentProtocol.text = "${getString(R.string.battery_label)}--"
+                        animateMaxChargingLimitVisibility(false)
                     }
                     return@collectLatest
                 }
                 currentRecords = records
-                btnShowData.visibility = View.VISIBLE
                 chartBaseTime = records.first().timestamp
 
                 // Update scrubber range
-                if (records.size > 1) {
+                val showScrubber = records.size > 1
+                if (showScrubber) {
                     sbChartScrubber.max = records.size - 1
-                    sbChartScrubber.visibility = View.VISIBLE
-                } else {
-                    sbChartScrubber.visibility = View.GONE
                 }
+                setViewsVisibleAnimated(
+                    btnShowData to true,
+                    sbChartScrubber to showScrubber
+                )
 
                 // If no point is selected, update dashboard with the latest record or extreme values
                 if (lineChart.highlighted?.isNotEmpty() == true) {
@@ -691,7 +837,8 @@ class MainActivity : AppCompatActivity() {
         tvCurrentVoltage.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 20f)
         tvCurrentCurrent.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 20f)
         tvCurrentPower.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 20f)
-        tvCurrentProtocol.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
+        tvCurrentProtocol.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 20f)
+        tvCurrentMaxPower.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
     }
 
     private fun updateStatusTitle(isSelected: Boolean, record: ChargeRecord? = null) {
@@ -719,7 +866,7 @@ class MainActivity : AppCompatActivity() {
             
             val drawable = ContextCompat.getDrawable(this, R.drawable.ic_selected_pin)
             if (drawable != null) {
-                val sizePx = (22 * resources.displayMetrics.density).toInt()
+                val sizePx = (18 * resources.displayMetrics.density).toInt()
                 drawable.setBounds(0, 0, sizePx, sizePx)
                 val imageSpan = android.text.style.ImageSpan(drawable, android.text.style.ImageSpan.ALIGN_CENTER)
                 spannable.setSpan(
@@ -757,24 +904,235 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateMaxChargingLimitText(batteryStatus: Intent?) {
-        if (batteryStatus != null) {
-            val maxCurrentMicro = batteryStatus.getIntExtra("max_charging_current", -1)
-            val maxVoltageMicro = batteryStatus.getIntExtra("max_charging_voltage", -1)
-            
-            if (maxCurrentMicro > 0 && maxVoltageMicro > 0) {
-                val maxCurrent = maxCurrentMicro / 1_000_000f
-                val maxVoltage = maxVoltageMicro / 1_000_000f
-                val maxPower = maxVoltage * maxCurrent
-                
-                val valStr = getString(R.string.max_power_format, maxVoltage, maxCurrent, maxPower)
-                tvCurrentMaxPower.text = formatValueText(getString(R.string.max_power_label), valStr, "", colorSummary)
-                tvCurrentMaxPower.visibility = View.VISIBLE
-            } else {
-                tvCurrentMaxPower.visibility = View.GONE
-            }
-        } else {
-            tvCurrentMaxPower.visibility = View.GONE
+        val maxCurrentMicro = batteryStatus?.getIntExtra("max_charging_current", -1) ?: -1
+        val maxVoltageMicro = batteryStatus?.getIntExtra("max_charging_voltage", -1) ?: -1
+        val maxCurrent = maxCurrentMicro.takeIf { it > 0 }?.div(1_000_000f)
+        val maxVoltage = maxVoltageMicro.takeIf { it > 0 }?.div(1_000_000f)
+        updateMaxChargingLimit(maxVoltage, maxCurrent)
+    }
+
+    private fun updateMaxChargingLimit(maxVoltage: Float?, maxCurrent: Float?) {
+        val maxPower = FastChargeLimit.powerWatts(maxVoltage, maxCurrent)
+        if (maxPower == null || maxVoltage == null || maxCurrent == null) {
+            maxChargingLimitVoltage = null
+            maxChargingLimitCurrent = null
+            maxChargingLimitRangeMin = null
+            maxChargingLimitRangeMax = null
+            animateMaxChargingLimitVisibility(false)
+            return
         }
+
+        maxChargingLimitVoltage = maxVoltage
+        maxChargingLimitCurrent = maxCurrent
+        maxChargingLimitRangeMin = null
+        maxChargingLimitRangeMax = null
+        val value = getString(R.string.max_power_format, maxVoltage, maxCurrent, maxPower)
+        tvCurrentMaxPower.text = formatValueText(
+            getString(R.string.max_power_label),
+            value,
+            "",
+            colorSummary
+        )
+        animateMaxChargingLimitVisibility(true)
+    }
+
+    private fun updateHistoricalMaxChargingLimitRange() {
+        val range = FastChargeLimit.historicalPowerRange(currentRecords)
+        if (range == null) {
+            maxChargingLimitVoltage = null
+            maxChargingLimitCurrent = null
+            maxChargingLimitRangeMin = null
+            maxChargingLimitRangeMax = null
+            animateMaxChargingLimitVisibility(false)
+            return
+        }
+
+        val (minPower, maxPower) = range
+        maxChargingLimitVoltage = null
+        maxChargingLimitCurrent = null
+        maxChargingLimitRangeMin = minPower
+        maxChargingLimitRangeMax = maxPower
+        tvCurrentMaxPower.text = formatValueText(
+            getString(R.string.max_power_label),
+            getString(R.string.max_power_range_format, minPower, maxPower),
+            "",
+            colorSummary
+        )
+        animateMaxChargingLimitVisibility(true)
+    }
+    private fun animateMaxChargingLimitVisibility(show: Boolean) {
+        if (maxChargingLimitTargetVisible == show) {
+            if (maxChargingLimitAnimator != null) return
+            if (show && layoutMaxChargingLimit.visibility == View.VISIBLE) return
+            if (!show && layoutMaxChargingLimit.visibility == View.GONE) return
+        }
+        maxChargingLimitTargetVisible = show
+
+        val parentWidth = (layoutMaxChargingLimit.parent as? View)?.width ?: 0
+        if (show && parentWidth <= 0) {
+            layoutMaxChargingLimit.post {
+                if (maxChargingLimitTargetVisible) animateMaxChargingLimitVisibility(true)
+            }
+            return
+        }
+
+        maxChargingLimitAnimator?.removeAllListeners()
+        maxChargingLimitAnimator?.cancel()
+        maxChargingLimitAnimator = null
+
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            applyMaxChargingLimitVisibility(show)
+            return
+        }
+
+        val slideDistance = 12f * resources.displayMetrics.density
+        val layoutParams = layoutMaxChargingLimit.layoutParams
+        val horizontalMargins = (layoutParams as? ViewGroup.MarginLayoutParams)?.let {
+            it.leftMargin + it.rightMargin
+        } ?: 0
+        val measuredWidth = (parentWidth - horizontalMargins).coerceAtLeast(1)
+
+        if (show && layoutMaxChargingLimit.visibility != View.VISIBLE) {
+            layoutMaxChargingLimit.visibility = View.VISIBLE
+            layoutMaxChargingLimit.alpha = 0f
+            layoutMaxChargingLimit.translationY = -slideDistance
+            layoutMaxChargingLimit.scaleX = 0.96f
+            layoutMaxChargingLimit.scaleY = 0.96f
+            layoutMaxChargingLimit.elevation = 0f
+        }
+
+        layoutMaxChargingLimit.measure(
+            View.MeasureSpec.makeMeasureSpec(measuredWidth, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val expandedHeight = layoutMaxChargingLimit.measuredHeight.coerceAtLeast(1)
+        val startHeight = layoutMaxChargingLimit.height.coerceAtLeast(0)
+        val endHeight = if (show) expandedHeight else 0
+
+        layoutParams.height = startHeight
+        layoutMaxChargingLimit.layoutParams = layoutParams
+
+        val heightAnimator = ValueAnimator.ofInt(startHeight, endHeight).apply {
+            addUpdateListener { valueAnimator ->
+                val params = layoutMaxChargingLimit.layoutParams
+                params.height = valueAnimator.animatedValue as Int
+                layoutMaxChargingLimit.layoutParams = params
+            }
+        }
+        val alphaAnimator = ObjectAnimator.ofFloat(
+            layoutMaxChargingLimit,
+            View.ALPHA,
+            layoutMaxChargingLimit.alpha,
+            if (show) 1f else 0f
+        )
+        val slideAnimator = ObjectAnimator.ofFloat(
+            layoutMaxChargingLimit,
+            View.TRANSLATION_Y,
+            layoutMaxChargingLimit.translationY,
+            if (show) 0f else -slideDistance
+        )
+        val scaleXAnimator = ObjectAnimator.ofFloat(
+            layoutMaxChargingLimit,
+            View.SCALE_X,
+            layoutMaxChargingLimit.scaleX,
+            if (show) 1.025f else 0.97f,
+            if (show) 1f else 0.97f
+        )
+        val scaleYAnimator = ObjectAnimator.ofFloat(
+            layoutMaxChargingLimit,
+            View.SCALE_Y,
+            layoutMaxChargingLimit.scaleY,
+            if (show) 1.025f else 0.97f,
+            if (show) 1f else 0.97f
+        )
+        val restingElevation = 3f * resources.displayMetrics.density
+        val elevationAnimator = ObjectAnimator.ofFloat(
+            layoutMaxChargingLimit,
+            "elevation",
+            layoutMaxChargingLimit.elevation,
+            if (show) 8f * resources.displayMetrics.density else 0f,
+            if (show) restingElevation else 0f
+        )
+
+        val animatorSet = AnimatorSet().apply {
+            playTogether(
+                heightAnimator,
+                alphaAnimator,
+                slideAnimator,
+                scaleXAnimator,
+                scaleYAnimator,
+                elevationAnimator
+            )
+            duration = 280L
+            interpolator = PathInterpolator(0.4f, 0f, 0.2f, 1f)
+            addListener(object : AnimatorListenerAdapter() {
+                private var cancelled = false
+
+                override fun onAnimationCancel(animation: Animator) {
+                    cancelled = true
+                }
+
+                override fun onAnimationEnd(animation: Animator) {
+                    if (!cancelled && maxChargingLimitAnimator === animation) {
+                        applyMaxChargingLimitVisibility(show)
+                        maxChargingLimitAnimator = null
+                    }
+                }
+            })
+        }
+        maxChargingLimitAnimator = animatorSet
+        animatorSet.start()
+    }
+
+    private fun applyMaxChargingLimitVisibility(show: Boolean) {
+        val params = layoutMaxChargingLimit.layoutParams
+        params.height = ViewGroup.LayoutParams.WRAP_CONTENT
+        layoutMaxChargingLimit.layoutParams = params
+        layoutMaxChargingLimit.alpha = if (show) 1f else 0f
+        layoutMaxChargingLimit.translationY = if (show) 0f else -12f * resources.displayMetrics.density
+        layoutMaxChargingLimit.scaleX = if (show) 1f else 0.97f
+        layoutMaxChargingLimit.scaleY = if (show) 1f else 0.97f
+        layoutMaxChargingLimit.elevation = if (show) 3f * resources.displayMetrics.density else 0f
+        layoutMaxChargingLimit.visibility = if (show) View.VISIBLE else View.GONE
+    }
+
+    private fun restoreMaxChargingLimitState(savedInstanceState: Bundle?) {
+        if (savedInstanceState?.getBoolean("MAX_CHARGING_LIMIT_VISIBLE", false) != true) return
+
+        val maxVoltage = savedInstanceState.getFloat("MAX_CHARGING_LIMIT_VOLTAGE", Float.NaN)
+        val maxCurrent = savedInstanceState.getFloat("MAX_CHARGING_LIMIT_CURRENT", Float.NaN)
+        val maxPower = FastChargeLimit.powerWatts(maxVoltage, maxCurrent)
+        if (maxPower != null) {
+            maxChargingLimitVoltage = maxVoltage
+            maxChargingLimitCurrent = maxCurrent
+            maxChargingLimitRangeMin = null
+            maxChargingLimitRangeMax = null
+            tvCurrentMaxPower.text = formatValueText(
+                getString(R.string.max_power_label),
+                getString(R.string.max_power_format, maxVoltage, maxCurrent, maxPower),
+                "",
+                colorSummary
+            )
+            maxChargingLimitTargetVisible = true
+            applyMaxChargingLimitVisibility(true)
+            return
+        }
+
+        val minPower = savedInstanceState.getFloat("MAX_CHARGING_LIMIT_RANGE_MIN", Float.NaN)
+        val maxRangePower = savedInstanceState.getFloat("MAX_CHARGING_LIMIT_RANGE_MAX", Float.NaN)
+        if (!minPower.isFinite() || !maxRangePower.isFinite() || minPower < 0f || maxRangePower < minPower) return
+        maxChargingLimitVoltage = null
+        maxChargingLimitCurrent = null
+        maxChargingLimitRangeMin = minPower
+        maxChargingLimitRangeMax = maxRangePower
+        tvCurrentMaxPower.text = formatValueText(
+            getString(R.string.max_power_label),
+            getString(R.string.max_power_range_format, minPower, maxRangePower),
+            "",
+            colorSummary
+        )
+        maxChargingLimitTargetVisible = true
+        applyMaxChargingLimitVisibility(true)
     }
 
     private fun updateDashboardText(record: ChargeRecord, isHistorical: Boolean) {
@@ -794,14 +1152,7 @@ class MainActivity : AppCompatActivity() {
         tvCurrentProtocol.text = formatValueText(getString(R.string.battery_label), valB, "%", activeColor)
         
         if (isHistorical) {
-            if (record.maxVoltage != null && record.maxCurrent != null && record.maxVoltage > 0 && record.maxCurrent > 0) {
-                val maxPower = record.maxVoltage * record.maxCurrent
-                val valStr = getString(R.string.max_power_format, record.maxVoltage, record.maxCurrent, maxPower)
-                tvCurrentMaxPower.text = formatValueText(getString(R.string.max_power_label), valStr, "", colorSummary)
-                tvCurrentMaxPower.visibility = View.VISIBLE
-            } else {
-                tvCurrentMaxPower.visibility = View.GONE
-            }
+            updateMaxChargingLimit(record.maxVoltage, record.maxCurrent)
         } else {
             val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
             val batteryStatus = registerReceiver(null, filter)
@@ -832,25 +1183,30 @@ class MainActivity : AppCompatActivity() {
         val changeSign = if (batChange >= 0) "+$batChange%" else "$batChange%"
         
         resetDashboardTextSize()
+        val summaryLabelSizeSp = 17f
+        tvCurrentVoltage.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, summaryLabelSizeSp)
+        tvCurrentCurrent.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, summaryLabelSizeSp)
+        tvCurrentPower.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, summaryLabelSizeSp)
+        tvCurrentProtocol.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, summaryLabelSizeSp)
         updateStatusTitle(false)
 
-        val valV = String.format(Locale.getDefault(), "%.2f ~ %.2f V", minV, maxV)
-        val valC = String.format(Locale.getDefault(), "%.2f ~ %.2f A", minC, maxC)
-        val valP = String.format(Locale.getDefault(), "%.2f ~ %.2f W", minP, maxP)
-        val valB = "$startBat% -> $endBat% ($changeSign)"
+        val valV = String.format(Locale.getDefault(), "%.2f～%.2f", minV, maxV)
+        val valC = String.format(Locale.getDefault(), "%.2f～%.2f", minC, maxC)
+        val valP = String.format(Locale.getDefault(), "%.2f～%.2f", minP, maxP)
+        val valB = "$startBat→$endBat($changeSign)"
 
-        tvCurrentVoltage.text = formatExtremeValueText(getString(R.string.voltage_label), valV)
-        tvCurrentCurrent.text = formatExtremeValueText(getString(R.string.current_label), valC)
-        tvCurrentPower.text = formatExtremeValueText(getString(R.string.power_label), valP)
-        tvCurrentProtocol.text = formatExtremeValueText(getString(R.string.battery_label), valB)
-        tvCurrentMaxPower.visibility = View.GONE
+        tvCurrentVoltage.text = formatExtremeValueText(getString(R.string.history_summary_voltage_label), valV, 10f)
+        tvCurrentCurrent.text = formatExtremeValueText(getString(R.string.history_summary_current_label), valC, 10f)
+        tvCurrentPower.text = formatExtremeValueText(getString(R.string.history_summary_power_label), valP, 10f)
+        tvCurrentProtocol.text = formatExtremeValueText(getString(R.string.history_summary_battery_label), valB, 10f)
+        updateHistoricalMaxChargingLimitRange()
     }
 
-    private fun formatExtremeValueText(label: String, value: String): android.text.SpannableString {
+    private fun formatExtremeValueText(label: String, value: String, valueSizeSp: Float = 14f): android.text.SpannableString {
         val fullText = "$label$value"
         val spannable = android.text.SpannableString(fullText)
         val density = resources.displayMetrics.density
-        val valuePx = (14f * density).toInt()
+        val valuePx = (valueSizeSp * density).toInt()
         val start = label.length
         val end = fullText.length
         
@@ -889,6 +1245,35 @@ class MainActivity : AppCompatActivity() {
         return dataSet
     }
 
+    private fun addFastChargeLimitDataSets(dataSets: MutableList<LineDataSet>) {
+        var legendAdded = false
+        FastChargeLimit.contiguousSegments(currentRecords).forEach { segment ->
+            val entries = segment.mapNotNull { record ->
+                FastChargeLimit.powerWatts(record.maxVoltage, record.maxCurrent)?.let { limitPower ->
+                    Entry((record.timestamp - chartBaseTime).toFloat(), limitPower, record)
+                }
+            }
+            if (entries.isEmpty()) return@forEach
+
+            val dataSet = createLineDataSet(
+                entries,
+                if (legendAdded) "" else getString(R.string.chart_fast_charge_limit),
+                colorSummary
+            ).apply {
+                lineWidth = 2f
+                enableDashedLine(12f, 6f, 0f)
+                setDrawCircles(entries.size == 1)
+                if (entries.size == 1) {
+                    setCircleColor(colorSummary)
+                    circleRadius = 3f
+                    setDrawCircleHole(false)
+                }
+                if (legendAdded) form = Legend.LegendForm.NONE
+            }
+            dataSets.add(dataSet)
+            legendAdded = true
+        }
+    }
     private fun updateChartData() {
         if (currentRecords.isEmpty()) return
 
@@ -978,6 +1363,10 @@ class MainActivity : AppCompatActivity() {
             dataSets.add(dataSet)
         }
 
+        if (selectedTabIndex == 2) {
+            addFastChargeLimitDataSets(dataSets)
+        }
+
         val lineData = LineData(dataSets.map { it })
         lineChart.data = lineData
         lineChart.notifyDataSetChanged()
@@ -1016,8 +1405,10 @@ class MainActivity : AppCompatActivity() {
             // Power ranges (charging & discharging)
             val minCP = prefs.getFloat("BG_MIN_CHARGE_POWER", Float.MAX_VALUE)
             val maxCP = prefs.getFloat("BG_MAX_CHARGE_POWER", -Float.MAX_VALUE)
-            val minDP = prefs.getFloat("BG_MIN_DISCHARGE_POWER", Float.MAX_VALUE)
-            val maxDP = prefs.getFloat("BG_MAX_DISCHARGE_POWER", -Float.MAX_VALUE)
+            val storedMinDP = prefs.getFloat("BG_MIN_DISCHARGE_POWER", Float.MAX_VALUE)
+            val storedMaxDP = prefs.getFloat("BG_MAX_DISCHARGE_POWER", -Float.MAX_VALUE)
+            val minDP = if (storedMinDP >= 0f && storedMaxDP >= 0f) -storedMaxDP else storedMinDP
+            val maxDP = if (storedMinDP >= 0f && storedMaxDP >= 0f) -storedMinDP else storedMaxDP
             
             val endBattery = BatteryUtils.getBatteryLevel(this)
             val batteryChange = if (startBattery != -1) endBattery - startBattery else 0
@@ -1037,9 +1428,9 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 val btnBannerView = findViewById<Button>(R.id.btnBannerView)
-                layoutBgReportBanner.visibility = View.VISIBLE
+                setViewsVisibleAnimated(layoutBgReportBanner to true)
                 btnBannerView.setOnClickListener {
-                    layoutBgReportBanner.visibility = View.GONE
+                    setViewsVisibleAnimated(layoutBgReportBanner to false)
                     showDialogOnce()
                 }
             }
@@ -1105,7 +1496,7 @@ class MainActivity : AppCompatActivity() {
             }
         }.toString()
 
-        AlertDialog.Builder(this)
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
             .setTitle(getString(R.string.bg_stats_title))
             .setMessage(message)
             .setPositiveButton(getString(R.string.confirm), null)
@@ -1134,8 +1525,8 @@ class MainActivity : AppCompatActivity() {
                         val batteryStatus = registerReceiver(null, filter)
                         if (batteryStatus != null) {
                             val voltage = BatteryUtils.getVoltage(batteryStatus)
-                            val current = BatteryUtils.getCurrent(this@MainActivity)
-                            val power = voltage * current
+                            val current = BatteryUtils.getCurrent(this@MainActivity, batteryStatus)
+                            val power = BatteryFlow.signedPowerWatts(voltage, current)
                             val batteryLevel = BatteryUtils.getBatteryLevel(this@MainActivity)
                             
                             resetDashboardTextSize()
@@ -1255,7 +1646,7 @@ class MainActivity : AppCompatActivity() {
                 getString(R.string.crop_delete_after),
                 getString(R.string.crop_delete_single)
             )
-            AlertDialog.Builder(this)
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
                 .setTitle(getString(R.string.crop_data_title, timeStr))
                 .setItems(options) { _, which ->
                     lifecycleScope.launch {
@@ -1315,10 +1706,18 @@ class MainActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putInt("SELECTED_TAB_INDEX", selectedTabIndex)
+        outState.putBoolean("MAX_CHARGING_LIMIT_VISIBLE", maxChargingLimitTargetVisible)
+        maxChargingLimitVoltage?.let { outState.putFloat("MAX_CHARGING_LIMIT_VOLTAGE", it) }
+        maxChargingLimitCurrent?.let { outState.putFloat("MAX_CHARGING_LIMIT_CURRENT", it) }
+        maxChargingLimitRangeMin?.let { outState.putFloat("MAX_CHARGING_LIMIT_RANGE_MIN", it) }
+        maxChargingLimitRangeMax?.let { outState.putFloat("MAX_CHARGING_LIMIT_RANGE_MAX", it) }
     }
 
 
     override fun onDestroy() {
+        maxChargingLimitAnimator?.removeAllListeners()
+        maxChargingLimitAnimator?.cancel()
+        maxChargingLimitAnimator = null
         val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
         prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
         if (isFinishing) {
@@ -1338,28 +1737,32 @@ class RawDataAdapter(private val records: List<ChargeRecord>) : RecyclerView.Ada
 
     @SuppressLint("SetTextI18n")
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val record = records[position]
-        holder.tvRawTime.text = format.format(Date(record.timestamp))
-        holder.tvRawVoltage.text = String.format(Locale.getDefault(), "%.2f", record.voltage)
-        holder.tvRawCurrent.text = String.format(Locale.getDefault(), "%.2f", record.current)
-        holder.tvRawPower.text = String.format(Locale.getDefault(), "%.2f", record.power)
-        holder.tvRawBattery.text = record.batteryLevel.toString()
-        holder.tvRawBatteryStatus.text = batteryStatusLabel(holder.itemView.context, record.batteryStatus)
-        holder.tvRawScreenState.text = when (record.screenState) {
-            0 -> "锁屏"
-            1 -> "亮屏"
-            else -> "未知"
-        }
-        val maxV = record.maxVoltage
-        val maxC = record.maxCurrent
-        if (maxV != null && maxC != null && maxV > 0 && maxC > 0) {
-            val maxPower = maxV * maxC
-            val vStr = if (maxV % 1 == 0f) String.format(Locale.US, "%.0f", maxV) else String.format(Locale.US, "%.1f", maxV)
-            val cStr = if (maxC % 1 == 0f) String.format(Locale.US, "%.0f", maxC) else String.format(Locale.US, "%.1f", maxC)
-            val pStr = if (maxPower % 1 == 0f) String.format(Locale.US, "%.0f", maxPower) else String.format(Locale.US, "%.1f", maxPower)
-            holder.tvRawMaxPower.text = "${pStr}W(${vStr}V/${cStr}A)"
-        } else {
-            holder.tvRawMaxPower.text = ""
+        try {
+            val record = records[position]
+            holder.tvRawTime.text = format.format(Date(record.timestamp))
+            holder.tvRawVoltage.text = String.format(Locale.getDefault(), "%.2f", record.voltage)
+            holder.tvRawCurrent.text = String.format(Locale.getDefault(), "%.2f", record.current)
+            holder.tvRawPower.text = String.format(Locale.getDefault(), "%.2f", record.power)
+            holder.tvRawBattery.text = record.batteryLevel.toString()
+            holder.tvRawBatteryStatus.text = batteryStatusLabel(holder.itemView.context, record.batteryStatus)
+            holder.tvRawScreenState.text = when (record.screenState) {
+                0 -> "锁屏"
+                1 -> "亮屏"
+                else -> "未知"
+            }
+            val maxV = record.maxVoltage
+            val maxC = record.maxCurrent
+            if (maxV != null && maxC != null && maxV > 0 && maxC > 0) {
+                val maxPower = maxV * maxC
+                val vStr = if (maxV % 1 == 0f) String.format(Locale.US, "%.0f", maxV) else String.format(Locale.US, "%.1f", maxV)
+                val cStr = if (maxC % 1 == 0f) String.format(Locale.US, "%.0f", maxC) else String.format(Locale.US, "%.1f", maxC)
+                val pStr = if (maxPower % 1 == 0f) String.format(Locale.US, "%.0f", maxPower) else String.format(Locale.US, "%.1f", maxPower)
+                holder.tvRawMaxPower.text = "${pStr}W(${vStr}V/${cStr}A)"
+            } else {
+                holder.tvRawMaxPower.text = ""
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("RawDataAdapter", "Error binding raw data row", e)
         }
     }
 

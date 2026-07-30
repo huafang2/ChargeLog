@@ -1,7 +1,7 @@
 pluginManagement {
     repositories {
-        maven { setUrl("https://mirrors.tencent.com/nexus/repository/maven-public/") }
-        maven { setUrl("https://mirrors.tencent.com/nexus/repository/gradle-plugins/") }
+        maven { url = uri("https://mirrors.tencent.com/nexus/repository/maven-public/") }
+        maven { url = uri("https://mirrors.tencent.com/nexus/repository/gradle-plugins/") }
         google {
             content {
                 includeGroupByRegex("com\\.android.*")
@@ -19,8 +19,8 @@ plugins {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        maven { setUrl("https://mirrors.tencent.com/nexus/repository/maven-public/") }
-        maven { setUrl("https://jitpack.io") }
+        maven { url = uri("https://mirrors.tencent.com/nexus/repository/maven-public/") }
+        maven { url = uri("https://jitpack.io") }
         google()
         mavenCentral()
     }

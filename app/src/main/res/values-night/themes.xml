@@ -1,19 +1,15 @@
 <resources>
-    <!-- Base application theme. -->
-    <style name="Theme.ChargeLog" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+    <!-- Base application theme (Dark) with NoActionBar -->
+    <style name="Theme.ChargeLog" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Primary brand color. -->
-        <item name="colorPrimary">@color/purple_200</item>
-        <item name="colorPrimaryVariant">@color/purple_700</item>
+        <item name="colorPrimary">@color/white</item>
         <item name="colorOnPrimary">@color/black</item>
-        <!-- Secondary brand color. -->
-        <item name="colorSecondary">@color/teal_200</item>
-        <item name="colorSecondaryVariant">@color/teal_200</item>
-        <item name="colorOnSecondary">@color/black</item>
         <!-- Status bar color. -->
-        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
-
-        <!-- Action Bar Customization -->
-        <item name="actionBarStyle">@style/Widget.ChargeLog.ActionBar</item>
-        <item name="actionBarTheme">@style/ThemeOverlay.ChargeLog.ActionBar</item>
+        <item name="android:statusBarColor">?attr/colorSurface</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">?attr/colorSurface</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.ChargeLog.MaterialAlertDialog</item>
+        <item name="android:windowAnimationStyle">@style/Animation.ChargeLog.Activity</item>
     </style>
 </resources>

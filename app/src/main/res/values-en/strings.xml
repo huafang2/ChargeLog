@@ -1,8 +1,9 @@
 <resources>
     <string name="app_name">ChargeLog</string>
-    <string name="stopped">ChargeLog Stopped</string>
+    <string name="footer_version_build">Created by Jau v%1$s · Build %2$s</string>
+    <string name="stopped">Stopped</string>
     <string name="recording">Recording charging data…</string>
-    <string name="viewing_history">Viewing History Records</string>
+    <string name="viewing_history">History View</string>
     <string name="view_data">View Data</string>
     <string name="history">History</string>
     <string name="back_to_history">Back to History</string>
@@ -10,13 +11,24 @@
     <string name="current_label">Current: </string>
     <string name="power_label">Power: </string>
     <string name="battery_label">Battery: </string>
+    <string name="history_summary_voltage_label">V: </string>
+    <string name="history_summary_current_label">I (A): </string>
+    <string name="history_summary_power_label">P (W): </string>
+    <string name="history_summary_battery_label">SOC (%): </string>
     <string name="max_power_label">Charger Limit: </string>
     <string name="max_power_format">%1$.1f V / %2$.1f A (approx. %3$.1f W)</string>
+    <string name="max_power_range_format">%1$.1f–%2$.1f W</string>
     <string name="start">Start</string>
     <string name="stop">Stop</string>
     <string name="clear">Clear</string>
     <string name="exit">Exit</string>
     <string name="sampling_interval">Sampling: %1$ds</string>
+    <string name="history_retention_title">History retention</string>
+    <string name="history_retention_forever">Forever</string>
+    <string name="history_retention_days">%1$d days</string>
+    <string name="history_retention_dialog_title">History retention</string>
+    <string name="history_retention_saved">Retention setting saved</string>
+    <string name="history_retention_next_start">Saved. Expired history will be removed on the next launch.</string>
     <string name="enable_bg_report">Enable background stats report</string>
     <string name="bg_report_generated">Background stats report generated</string>
     <string name="view">View</string>
@@ -27,10 +39,10 @@
     
     <string name="raw_charging_data">Raw Charging Data</string>
     <string name="battery_change">Battery Change: %1$d%% -&gt; %2$d%% (%3$s)</string>
-    <string name="charge_power_summary">Charge Power: Min %1$.2f W - Max %2$.2f W\n</string>
-    <string name="charge_current_summary">Charge Current: Min %1$.2f A - Max %2$.2f A\n</string>
-    <string name="discharge_power_summary">Discharge Power: Min %1$.2f W - Max %2$.2f W\n</string>
-    <string name="discharge_current_summary">Discharge Current: Min %1$.2f A - Max %2$.2f A\n</string>
+    <string name="charge_power_summary">Charge Power: Min %1$s W - Max %2$s W\n</string>
+    <string name="charge_current_summary">Charge Current: Min %1$s A - Max %2$s A\n</string>
+    <string name="discharge_power_summary">Discharge Power: Min %1$s W - Max %2$s W\n</string>
+    <string name="discharge_current_summary">Discharge Current: Min %1$s A - Max %2$s A\n</string>
     
     <string name="export_csv">Export CSV</string>
     <string name="csv_export_success">CSV exported successfully</string>
@@ -50,7 +62,7 @@
     <string name="crop_delete_after">Delete all data after this moment (excl. current point)</string>
     <string name="crop_delete_single">Delete only current data point</string>
     
-    <string name="history_title">Charging History</string>
+    <string name="history_title">History</string>
     <string name="estimate_battery_health">Estimate Health</string>
     <string name="select_for_health_estimate">Select for battery health estimate</string>
     <string name="health_select_records">Select history records first</string>
@@ -73,7 +85,7 @@
     <string name="health_charge_breakdown">Positive charge: %1$.1f mAh\nDischarge: %2$.1f mAh\nNet charge: %3$.1f mAh</string>
     <string name="health_status_known">Battery status: system charging/full status is available for the new records</string>
     <string name="health_status_unknown">Battery status: includes legacy records without status</string>
-    <string name="health_legacy_full_tail_notice">This record has no full-status data, so all samples after 100% are included. Crop it at the endpoint you consider appropriate. Positive values already stored in legacy data cannot recover their original sign; existing negative values are subtracted normally.</string>
+    <string name="health_legacy_full_tail_notice" formatted="false">This record has no full-status data, so all samples after 100% are included. Crop it at the endpoint you consider appropriate. Positive values already stored in legacy data cannot recover their original sign; existing negative values are subtracted normally.</string>
     <string name="health_signed_result_notice">Estimated from signed net current at the battery: positive current is added and negative current is subtracted. New records stop at the first system FULL status; legacy records use all samples retained by the user.</string>
     <string name="table_battery_status">Status</string>
     <string name="battery_status_charging">Charging</string>
@@ -97,6 +109,7 @@
     <string name="chart_voltage">Voltage (V)</string>
     <string name="chart_current">Current (A)</string>
     <string name="chart_power">Power (W)</string>
+    <string name="chart_fast_charge_limit">Charger Limit (W)</string>
     <string name="chart_battery">Battery (%)</string>
     <string name="tab_voltage">Voltage</string>
     <string name="tab_current">Current</string>
@@ -128,6 +141,7 @@
     <string name="service_running_title">ChargeLog is running</string>
     <string name="service_running_desc">Recording charging data in background…</string>
     <string name="service_discharging">Discharge: %1$.2f W</string>
+    <string name="service_not_charging">Not charging: %1$.2f W</string>
     <string name="service_charging">Charge: %1$.2f W</string>
     <string name="service_status_recording">Recording</string>
     <string name="service_status_stopped">Stopped</string>
@@ -137,9 +151,9 @@
     <string name="service_action_start">Start</string>
     <string name="service_action_exit">Exit</string>
     <string name="service_channel_name">ChargeLog Service Channel</string>
-    <string name="title_viewing_history_selected">Viewing history (selected %s)</string>
-    <string name="title_recording_selected">Recording (selected %s)</string>
-    <string name="title_stopped_selected">Stopped (selected %s)</string>
+    <string name="title_viewing_history_selected">History · %s</string>
+    <string name="title_recording_selected">Recording · %s</string>
+    <string name="title_stopped_selected">Stopped · %s</string>
     <string name="import_history">Import</string>
     <string name="export_history">Export</string>
     <string name="export_success">History records exported successfully</string>

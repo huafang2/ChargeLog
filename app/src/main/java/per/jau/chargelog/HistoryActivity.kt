@@ -33,7 +33,6 @@ import per.jau.chargelog.utils.BatteryUtils
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.abs
 
 data class ChargeSession(
     val startTime: Long,
@@ -75,7 +74,10 @@ class HistoryActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_history)
 
-        // Enable standard action bar back arrow if present
+        val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        if (toolbar != null) {
+            setSupportActionBar(toolbar)
+        }
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
         val mainView = findViewById<View>(R.id.history_main)
@@ -104,7 +106,7 @@ class HistoryActivity : AppCompatActivity() {
         btnEstimateHealth = findViewById(R.id.btnEstimateHealth)
         btnEstimateHealth.setOnClickListener { beginHealthEstimate() }
         btnClearAll.setOnClickListener {
-            AlertDialog.Builder(this)
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.dialog_clear_all_title)
                 .setMessage(R.string.dialog_clear_all_msg)
                 .setPositiveButton(R.string.clear) { _, _ ->
@@ -124,7 +126,7 @@ class HistoryActivity : AppCompatActivity() {
                 startActivity(intent)
             },
             onLongClick = { session ->
-                AlertDialog.Builder(this)
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.dialog_delete_session_title)
                     .setMessage(R.string.dialog_delete_session_msg)
                     .setPositiveButton(R.string.menu_delete_segment) { _, _ ->
@@ -182,14 +184,14 @@ class HistoryActivity : AppCompatActivity() {
                     val endBat = sorted.last().batteryLevel
                     
                     // Split charge and discharge
-                    val chargePoints = sorted.filter { it.power >= 0 }
+                    val chargePoints = sorted.filter { it.power > 0 }
                     val dischargePoints = sorted.filter { it.power < 0 }
                     
                     val minChargePower = if (chargePoints.isNotEmpty()) chargePoints.minOf { it.power } else null
                     val maxChargePower = if (chargePoints.isNotEmpty()) chargePoints.maxOf { it.power } else null
                     
-                    val minDischargePower = if (dischargePoints.isNotEmpty()) dischargePoints.minOf { abs(it.power) } else null
-                    val maxDischargePower = if (dischargePoints.isNotEmpty()) dischargePoints.maxOf { abs(it.power) } else null
+                    val minDischargePower = if (dischargePoints.isNotEmpty()) dischargePoints.minOf { it.power } else null
+                    val maxDischargePower = if (dischargePoints.isNotEmpty()) dischargePoints.maxOf { it.power } else null
                     
                     ChargeSession(
                         startTime = start,
@@ -258,7 +260,7 @@ class HistoryActivity : AppCompatActivity() {
             getString(R.string.health_system_capacity, it)
         } ?: getString(R.string.health_system_capacity_unavailable)
 
-        AlertDialog.Builder(this)
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
             .setTitle(R.string.health_capacity_title)
             .setMessage(getString(R.string.health_capacity_input_message, sessions.size, systemText))
             .setView(container)
@@ -341,7 +343,7 @@ class HistoryActivity : AppCompatActivity() {
                 }
             }
         }
-        AlertDialog.Builder(this)
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
             .setTitle(R.string.health_capacity_title)
             .setMessage(message)
             .setPositiveButton(android.R.string.ok, null)
@@ -478,7 +480,7 @@ class HistoryActivity : AppCompatActivity() {
                 
                 launch(Dispatchers.Main) {
                     if (conflicts.isNotEmpty()) {
-                        AlertDialog.Builder(this@HistoryActivity)
+                        com.google.android.material.dialog.MaterialAlertDialogBuilder(this@HistoryActivity)
                             .setTitle(getString(R.string.conflict_dialog_title))
                             .setMessage(getString(R.string.conflict_dialog_msg, conflicts.size))
                             .setPositiveButton(getString(R.string.conflict_use_imported)) { _, _ ->

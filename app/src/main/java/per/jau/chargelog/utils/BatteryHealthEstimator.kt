@@ -40,14 +40,19 @@ object BatteryHealthEstimator {
         var acceptedSessions = 0
 
         sessions.forEach { records ->
-            val sorted = records
-                .filter { it.batteryLevel in 0..100 && it.current.isFinite() }
-                .sortedBy { it.timestamp }
-            if (sorted.size < 2) return@forEach
+            if (records.size < 2) return@forEach
 
-            val intervals = sorted.zipWithNext()
-                .map { (a, b) -> b.timestamp - a.timestamp }
-                .filter { it > 0 }
+            fun isValid(record: ChargeRecord): Boolean =
+                record.batteryLevel in 0..100 && record.current.isFinite()
+
+            val intervals = records.zipWithNext()
+                .mapNotNull { (a, b) ->
+                    if (isValid(a) && isValid(b)) {
+                        (b.timestamp - a.timestamp).takeIf { it > 0 }
+                    } else {
+                        null
+                    }
+                }
                 .sorted()
             if (intervals.isEmpty()) return@forEach
             val medianInterval = intervals[intervals.size / 2]
@@ -88,16 +93,22 @@ object BatteryHealthEstimator {
                 runHasLegacyFullTail = false
             }
 
-            for ((a, b) in sorted.zipWithNext()) {
+            for ((a, b) in records.zipWithNext()) {
                 if (a.batteryStatus == BatteryManager.BATTERY_STATUS_FULL) {
                     finishRun()
                     break
                 }
-                val deltaMs = b.timestamp - a.timestamp
-                if (deltaMs <= 0) continue
-                if (deltaMs > maxAllowedGap) {
+                if (!isValid(a) || !isValid(b)) {
                     hasGap = true
                     finishRun()
+                    if (b.batteryStatus == BatteryManager.BATTERY_STATUS_FULL) break
+                    continue
+                }
+                val deltaMs = b.timestamp - a.timestamp
+                if (deltaMs <= 0 || deltaMs > maxAllowedGap) {
+                    hasGap = true
+                    finishRun()
+                    if (b.batteryStatus == BatteryManager.BATTERY_STATUS_FULL) break
                     continue
                 }
                 if (runStartLevel == null) runStartLevel = a.batteryLevel

@@ -102,6 +102,64 @@ class BatteryHealthEstimatorTest {
         assertTrue(estimate.hasLegacyFullTail)
     }
 
+    @Test
+    fun invalidSampleSplitsRunsInsteadOfBeingIntegratedAcross() {
+        val base = 40_000_000L
+        val records = listOf(
+            record(4L, base, 20, 1f),
+            record(4L, base + 3_600_000L, 45, 1f),
+            record(4L, base + 5_400_000L, 45, Float.NaN),
+            record(4L, base + 7_200_000L, 45, 1f),
+            record(4L, base + 10_800_000L, 70, 1f)
+        )
+
+        val result = BatteryHealthEstimator.estimate(listOf(records), 4000f)
+
+        assertTrue(result is BatteryHealthResult.Ready)
+        val estimate = (result as BatteryHealthResult.Ready).estimate
+        assertEquals(2000f, estimate.netChargedCapacityMah, 0.5f)
+        assertEquals(4000f, estimate.estimatedFullCapacityMah, 0.5f)
+        assertEquals(50, estimate.totalBatterySpanPercent)
+        assertEquals(BatteryHealthEstimate.Confidence.LOW, estimate.confidence)
+    }
+
+    @Test
+    fun backwardTimestampSplitsRunsWithoutReorderingSamples() {
+        val base = 50_000_000L
+        val records = listOf(
+            record(5L, base, 20, 1f),
+            record(5L, base + 3_600_000L, 45, 1f),
+            record(5L, base + 1_800_000L, 20, 1f),
+            record(5L, base + 5_400_000L, 45, 1f)
+        )
+
+        val result = BatteryHealthEstimator.estimate(listOf(records), 4000f)
+
+        assertTrue(result is BatteryHealthResult.Ready)
+        val estimate = (result as BatteryHealthResult.Ready).estimate
+        assertEquals(2000f, estimate.netChargedCapacityMah, 0.5f)
+        assertEquals(4000f, estimate.estimatedFullCapacityMah, 0.5f)
+        assertEquals(50, estimate.totalBatterySpanPercent)
+    }
+
+    @Test
+    fun duplicateTimestampSplitsRuns() {
+        val base = 60_000_000L
+        val records = listOf(
+            record(6L, base, 20, 1f),
+            record(6L, base + 3_600_000L, 45, 1f),
+            record(6L, base + 3_600_000L, 20, 1f),
+            record(6L, base + 7_200_000L, 45, 1f)
+        )
+
+        val result = BatteryHealthEstimator.estimate(listOf(records), 4000f)
+
+        assertTrue(result is BatteryHealthResult.Ready)
+        val estimate = (result as BatteryHealthResult.Ready).estimate
+        assertEquals(2000f, estimate.netChargedCapacityMah, 0.5f)
+        assertEquals(4000f, estimate.estimatedFullCapacityMah, 0.5f)
+        assertEquals(50, estimate.totalBatterySpanPercent)
+    }
     private fun session(id: Long, startLevel: Int, endLevel: Int): List<ChargeRecord> {
         val span = endLevel - startLevel
         val durationMs = span * 144_000L // 1 A into a 4000 mAh battery

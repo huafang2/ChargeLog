@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/main"
     android:layout_width="match_parent"
@@ -9,150 +10,346 @@
     android:background="?android:attr/windowBackground"
     tools:context=".MainActivity">
 
+    <!-- Xiaomi HyperOS / MIUI Style Title Bar -->
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="54dp"
+        app:title="@string/app_name"
+        app:titleTextAppearance="@style/XiaomiTitleTextAppearance"
+        android:background="@android:color/transparent"
+        app:elevation="0dp"
+        app:contentInsetStart="0dp"
+        app:contentInsetStartWithNavigation="0dp"
+        android:layout_marginBottom="4dp" />
+
+    <!-- Top Header Bar -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:layout_marginBottom="8dp">
+        android:layout_marginBottom="12dp">
 
         <TextView
             android:id="@+id/tvStatus"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="38dp"
             android:layout_weight="1"
             android:text="@string/stopped"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_status_badge"
+            android:paddingHorizontal="14dp"
+            android:gravity="center_vertical"
+            android:textColor="@color/status_stopped_text"
+            android:maxLines="1"
+            android:ellipsize="none"
+            app:autoSizeTextType="uniform"
+            app:autoSizeMinTextSize="11sp"
+            app:autoSizeMaxTextSize="15sp"
+            app:autoSizeStepGranularity="1sp" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnShowData"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="38dp"
             android:text="@string/view_data"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:cornerRadius="19dp"
+            app:backgroundTint="@color/btn_bg_slate_border"
+            android:textColor="@color/btn_bg_obsidian"
             android:layout_marginEnd="8dp"
             android:visibility="gone" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnHistory"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/history" />
+            android:layout_height="38dp"
+            android:text="@string/history"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:cornerRadius="19dp"
+            app:backgroundTint="@color/btn_bg_slate_border"
+            android:textColor="@color/btn_bg_obsidian"
+            app:icon="@drawable/ic_history_time"
+            app:iconTint="@color/btn_bg_obsidian"
+            app:iconSize="14dp"
+            app:iconPadding="4dp" />
     </LinearLayout>
 
+    <!-- Metrics Dashboard Cards -->
     <GridLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:columnCount="2"
-        android:rowCount="2"
-        android:layout_marginBottom="16dp">
+        android:rowCount="3"
+        android:layout_marginBottom="12dp">
 
-        <TextView
-            android:id="@+id/tvCurrentVoltage"
+        <!-- Voltage Card -->
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_columnWeight="1"
-            android:text="电压: -- V"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp"/>
+            android:orientation="vertical"
+            android:background="@drawable/bg_card_voltage"
+            android:padding="12dp"
+            android:layout_marginEnd="4dp"
+            android:layout_marginBottom="8dp">
 
-        <TextView
-            android:id="@+id/tvCurrentCurrent"
+            <TextView
+                android:id="@+id/tvCurrentVoltage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="电压: -- V"
+                android:textSize="17sp"
+                android:singleLine="true"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:ellipsize="none"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                app:drawableStartCompat="@drawable/ic_voltage"
+                app:drawableTint="@color/dashboard_icon_tint"
+                android:drawablePadding="6dp"
+                android:gravity="center_vertical" />
+        </LinearLayout>
+
+        <!-- Current Card -->
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_columnWeight="1"
-            android:text="电流: -- A"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp"/>
+            android:orientation="vertical"
+            android:background="@drawable/bg_card_current"
+            android:padding="12dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="8dp">
 
-        <TextView
-            android:id="@+id/tvCurrentPower"
+            <TextView
+                android:id="@+id/tvCurrentCurrent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="电流: -- A"
+                android:textSize="17sp"
+                android:singleLine="true"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:ellipsize="none"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                app:drawableStartCompat="@drawable/ic_current"
+                app:drawableTint="@color/dashboard_icon_tint"
+                android:drawablePadding="6dp"
+                android:gravity="center_vertical" />
+        </LinearLayout>
+
+        <!-- Power Card -->
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_columnWeight="1"
-            android:text="功率: -- W"
-            android:textSize="20sp"
-            android:textStyle="bold"/>
+            android:orientation="vertical"
+            android:background="@drawable/bg_card_power"
+            android:padding="12dp"
+            android:layout_marginEnd="4dp"
+            android:layout_marginBottom="8dp">
 
-        <TextView
-            android:id="@+id/tvCurrentProtocol"
+            <TextView
+                android:id="@+id/tvCurrentPower"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="功率: -- W"
+                android:textSize="17sp"
+                android:singleLine="true"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:ellipsize="none"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                app:drawableStartCompat="@drawable/ic_power_gauge"
+                app:drawableTint="@color/dashboard_icon_tint"
+                android:drawablePadding="6dp"
+                android:gravity="center_vertical" />
+        </LinearLayout>
+
+        <!-- Battery Card -->
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_columnWeight="1"
-            android:text="电量: --"
-            android:textSize="18sp"/>
+            android:orientation="vertical"
+            android:background="@drawable/bg_card_battery"
+            android:padding="12dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="8dp">
 
-        <TextView
-            android:id="@+id/tvCurrentMaxPower"
+            <TextView
+                android:id="@+id/tvCurrentProtocol"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="电量: --"
+                android:textSize="17sp"
+                android:singleLine="true"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:ellipsize="none"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                app:drawableStartCompat="@drawable/ic_battery_full"
+                app:drawableTint="@color/dashboard_icon_tint"
+                android:drawablePadding="6dp"
+                android:gravity="center_vertical" />
+        </LinearLayout>
+
+        <!-- Fast Charging Limit Card -->
+        <LinearLayout
+            android:id="@+id/layoutMaxChargingLimit"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_columnWeight="2"
             android:layout_columnSpan="2"
-            android:text="快充上限: --"
-            android:textSize="16sp"
-            android:layout_marginTop="8dp"
-            android:visibility="gone"/>
+            android:layout_columnWeight="2"
+            android:orientation="vertical"
+            android:background="@drawable/bg_card_fast_charge_limit"
+            android:padding="12dp"
+            android:elevation="0dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvCurrentMaxPower"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="快充上限: --"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                app:drawableStartCompat="@drawable/ic_fast_charge_limit"
+                app:drawableTint="@color/dashboard_value_summary"
+                android:drawablePadding="6dp"
+                android:gravity="center_vertical" />
+        </LinearLayout>
     </GridLayout>
 
-    <com.google.android.material.tabs.TabLayout
+    <!-- Tab Layout -->
+    <per.jau.chargelog.LiquidTabLayout
         android:id="@+id/tabLayout"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"/>
+        android:layout_height="44dp"
+        android:background="@drawable/bg_card_surface"
+        app:tabMode="fixed"
+        app:tabGravity="fill"
+        app:tabIndicator="@drawable/bg_tab_liquid_indicator"
+        app:tabIndicatorColor="@color/tab_indicator_tint"
+        app:tabIndicatorFullWidth="true"
+        app:tabIndicatorGravity="stretch"
+        app:tabIndicatorHeight="44dp"
+        app:tabIndicatorAnimationMode="elastic"
+        app:tabIndicatorAnimationDuration="320"
+        app:tabSelectedTextColor="@color/tab_selected_text"
+        app:tabTextColor="@color/tab_unselected_text"
+        app:tabRippleColor="@color/tab_ripple"
+        android:layout_marginBottom="12dp"/>
 
+    <!-- Action Buttons Row -->
     <LinearLayout
-        style="?android:attr/buttonBarStyle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_horizontal"
-        android:layout_marginBottom="16dp">
+        android:layout_marginBottom="12dp">
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStart"
-            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="44dp"
             android:layout_weight="1"
             android:text="@string/start"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:cornerRadius="22dp"
+            app:backgroundTint="@color/btn_bg_obsidian"
+            android:textColor="@color/white"
+            app:icon="@drawable/ic_start_play"
+            app:iconTint="@color/white"
+            app:iconSize="16dp"
+            app:iconPadding="4dp"
             android:layout_marginEnd="4dp" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStop"
-            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="44dp"
             android:layout_weight="1"
             android:text="@string/stop"
-            android:layout_marginHorizontal="4dp" />
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:cornerRadius="22dp"
+            app:backgroundTint="@color/btn_bg_rose_light"
+            android:textColor="@color/btn_text_danger"
+            app:icon="@drawable/ic_stop_square"
+            app:iconTint="@color/btn_text_danger"
+            app:iconSize="14dp"
+            app:iconPadding="4dp"
+            android:layout_marginHorizontal="3dp" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnClear"
-            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="44dp"
             android:layout_weight="1"
             android:text="@string/clear"
-            android:layout_marginHorizontal="4dp" />
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:cornerRadius="22dp"
+            app:backgroundTint="@color/btn_bg_slate_light"
+            android:textColor="@color/btn_text_slate"
+            app:icon="@drawable/ic_clear_sweep"
+            app:iconTint="@color/btn_text_slate"
+            app:iconSize="16dp"
+            app:iconPadding="4dp"
+            android:layout_marginHorizontal="3dp" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnExit"
-            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_height="44dp"
+            android:layout_weight="0.9"
             android:text="@string/exit"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:cornerRadius="22dp"
+            app:backgroundTint="@color/btn_bg_ghost_light"
+            android:textColor="@color/btn_text_ghost"
+            app:icon="@drawable/ic_exit_to_app"
+            app:iconTint="@color/btn_text_ghost"
+            app:iconSize="16dp"
+            app:iconPadding="4dp"
             android:layout_marginStart="4dp"/>
     </LinearLayout>
 
+    <!-- Sampling Interval Row -->
     <LinearLayout
         android:id="@+id/layoutInterval"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
+        android:background="@drawable/bg_card_surface"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp"
         android:layout_marginBottom="8dp">
 
         <TextView
@@ -160,7 +357,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="--"
-            android:textSize="14sp"/>
+            android:textSize="13sp"
+            android:textColor="?android:attr/textColorPrimary"/>
 
         <SeekBar
             android:id="@+id/sbInterval"
@@ -171,6 +369,7 @@
             android:progress="4"/>
     </LinearLayout>
 
+    <!-- Settings Row -->
     <LinearLayout
         android:id="@+id/layoutSettingsRow"
         android:layout_width="match_parent"
@@ -179,22 +378,84 @@
         android:gravity="center_vertical"
         android:layout_marginBottom="8dp">
 
-        <androidx.appcompat.widget.SwitchCompat
-            android:id="@+id/switchBgReport"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/enable_bg_report"
-            android:textSize="14sp"
-            android:checked="true"/>
+        <LinearLayout
+            android:id="@+id/layoutHistoryRetention"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:minHeight="48dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_card_surface"
+            android:foreground="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="8dp"
+            android:layout_marginEnd="4dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/history_retention_title"
+                android:textSize="12sp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textColor="?android:attr/textColorPrimary" />
+
+            <TextView
+                android:id="@+id/tvHistoryRetentionValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/history_retention_forever"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                app:drawableEndCompat="@drawable/ic_arrow_drop_down"
+                android:drawablePadding="2dp"
+                android:textColor="?android:attr/textColorSecondary" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layoutBgReportSetting"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:minHeight="48dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_card_surface"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:layout_marginStart="4dp">
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchBgReport"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/enable_bg_report"
+                android:textSize="12sp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textColor="?android:attr/textColorPrimary"
+                android:checked="true" />
+        </LinearLayout>
     </LinearLayout>
 
-
-
-    <per.jau.chargelog.CustomLineChart
-        android:id="@+id/lineChart"
+    <!-- Line Chart Container -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1"
+        android:background="@drawable/bg_card_surface"
+        android:padding="8dp">
+
+        <per.jau.chargelog.CustomLineChart
+            android:id="@+id/lineChart"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </FrameLayout>
 
     <SeekBar
         android:id="@+id/sbChartScrubber"
@@ -211,8 +472,8 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:background="#1A00E676" 
-        android:padding="8dp"
+        android:background="@drawable/bg_card_surface"
+        android:padding="10dp"
         android:layout_marginTop="8dp"
         android:visibility="gone">
 
@@ -221,24 +482,32 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="@string/bg_report_generated"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textStyle="bold"
             android:textColor="?android:attr/textColorPrimary"/>
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnBannerView"
+            style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="36dp"
             android:text="@string/view"
-            android:layout_marginEnd="8dp"
-            style="?android:attr/buttonStyleSmall"/>
+            android:textSize="12sp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:cornerRadius="18dp"
+            android:layout_marginEnd="6dp"/>
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnBannerClose"
+            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="36dp"
             android:text="@string/close"
-            style="?android:attr/buttonStyleSmall"/>
+            android:textSize="12sp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:cornerRadius="18dp"/>
     </LinearLayout>
 
     <TextView
@@ -250,6 +519,6 @@
         android:gravity="center"
         android:textColor="?android:attr/textColorSecondary"
         android:textStyle="italic"
-        android:layout_marginTop="4dp"/>
+        android:layout_marginTop="6dp"/>
 
 </LinearLayout>

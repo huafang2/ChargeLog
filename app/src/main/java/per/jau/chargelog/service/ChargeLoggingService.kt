@@ -13,13 +13,16 @@ import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import per.jau.chargelog.R
 import per.jau.chargelog.data.ChargeDatabase
 import per.jau.chargelog.data.ChargeRecord
 import per.jau.chargelog.utils.BatteryUtils
-import kotlin.math.abs
+import per.jau.chargelog.utils.BatteryFlow
+import per.jau.chargelog.utils.BatteryFlowDirection
+import per.jau.chargelog.utils.HistoryRetention
 import androidx.core.content.edit
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -29,6 +32,8 @@ class ChargeLoggingService : Service() {
     private val scope = CoroutineScope(Dispatchers.IO + job)
     private lateinit var wakeLock: PowerManager.WakeLock
     private var loggingJob: Job? = null
+    private lateinit var sessionInitializationJob: Job
+    private val commandChannel = Channel<String>(Channel.UNLIMITED)
 
     override fun onCreate() {
         super.onCreate()
@@ -60,21 +65,34 @@ class ChargeLoggingService : Service() {
             
         startForeground(NOTIFICATION_ID, notification)
 
-        // Initialize session start time in SharedPreferences
-        val db = ChargeDatabase.getDatabase(this)
+        sessionInitializationJob = scope.launch {
+            HistoryRetention.cleanup(this@ChargeLoggingService)
+            initializeSessionState()
+        }
         scope.launch {
-            val latest = db.chargeDao().getLatestRecord()
-            val now = System.currentTimeMillis()
-            val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-            val existingStart = prefs.getLong("CURRENT_SESSION_START", 0L)
-            val forceNew = prefs.getBoolean("FORCE_NEW_SESSION", false)
-            
-            val sessionStart = if (!forceNew && latest != null && (now - latest.timestamp) < 5 * 60 * 1000) {
-                if (existingStart > 0L && existingStart <= latest.timestamp) {
-                    existingStart
-                } else {
-                    latest.timestamp
-                }
+            sessionInitializationJob.join()
+            for (action in commandChannel) {
+                handleServiceAction(action)
+            }
+        }
+
+        startLoggingLoop()
+    }
+
+    private suspend fun initializeSessionState() {
+        val db = ChargeDatabase.getDatabase(this)
+        val latest = db.chargeDao().getLatestRecord()
+        val now = System.currentTimeMillis()
+        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+        val isRecording = prefs.getBoolean("IS_RECORDING", false)
+        val forceNew = prefs.getBoolean("FORCE_NEW_SESSION", false)
+        val existingStart = prefs.getLong("CURRENT_SESSION_START", 0L)
+
+        if (isRecording) {
+            val canResume = !forceNew && latest != null &&
+                    now - latest.timestamp in 0L until SESSION_RESUME_WINDOW_MS
+            val sessionStart = if (canResume) {
+                existingStart.takeIf { it > 0L && it <= latest.timestamp } ?: latest.timestamp
             } else {
                 now
             }
@@ -82,11 +100,50 @@ class ChargeLoggingService : Service() {
                 putLong("CURRENT_SESSION_START", sessionStart)
                 putBoolean("FORCE_NEW_SESSION", false)
             }
+        } else if (existingStart <= 0L) {
+            prefs.edit { putLong("CURRENT_SESSION_START", now) }
         }
-
-        startLoggingLoop()
     }
 
+    private fun handleServiceAction(action: String) {
+        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+        when (action) {
+            ACTION_START_RECORDING -> {
+                val wasRecording = prefs.getBoolean("IS_RECORDING", false)
+                val forceNew = prefs.getBoolean("FORCE_NEW_SESSION", false)
+                val sessionId = RecordingSessionPolicy.sessionIdForStart(
+                    wasRecording = wasRecording,
+                    forceNew = forceNew,
+                    existingSessionId = prefs.getLong("CURRENT_SESSION_START", 0L),
+                    now = System.currentTimeMillis()
+                )
+                prefs.edit {
+                    putLong("CURRENT_SESSION_START", sessionId)
+                    putBoolean("IS_RECORDING", true)
+                    putBoolean("FORCE_NEW_SESSION", false)
+                }
+                triggerImmediateNotificationUpdate(true)
+                startLoggingLoop()
+            }
+            ACTION_STOP_RECORDING -> {
+                prefs.edit {
+                    putBoolean("IS_RECORDING", false)
+                    putBoolean("FORCE_NEW_SESSION", true)
+                }
+                triggerImmediateNotificationUpdate(false)
+                startLoggingLoop()
+            }
+            ACTION_EXIT_APP -> {
+                prefs.edit {
+                    putBoolean("IS_RECORDING", false)
+                    putBoolean("FORCE_NEW_SESSION", true)
+                    putBoolean("USER_EXITED", true)
+                }
+                stopSelf()
+                android.os.Process.killProcess(android.os.Process.myPid())
+            }
+        }
+    }
     private fun triggerImmediateNotificationUpdate(isRecording: Boolean) {
         try {
             val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
@@ -94,7 +151,7 @@ class ChargeLoggingService : Service() {
             if (batteryStatus != null) {
                 val voltage = BatteryUtils.getVoltage(batteryStatus)
                 val current = BatteryUtils.getCurrent(this, batteryStatus)
-                val power = voltage * current
+                val power = BatteryFlow.signedPowerWatts(voltage, current)
                 val batteryLevel = BatteryUtils.getBatteryLevel(this, batteryStatus)
                 updateNotification(voltage, current, power, batteryLevel, isRecording)
             }
@@ -105,7 +162,9 @@ class ChargeLoggingService : Service() {
 
     private fun startLoggingLoop() {
         loggingJob?.cancel()
+        val initializationJob = sessionInitializationJob
         loggingJob = scope.launch {
+            initializationJob.join()
             val db = ChargeDatabase.getDatabase(this@ChargeLoggingService)
             val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
             while (true) {
@@ -166,9 +225,14 @@ class ChargeLoggingService : Service() {
                         if (count > 0) {
                             val avgVoltage = sumVoltage / count
                             val avgCurrent = sumCurrent / count
-                            val avgPower = avgVoltage * avgCurrent
+                            val avgPower = BatteryFlow.signedPowerWatts(avgVoltage, avgCurrent)
                             
-                            val isCharging = avgCurrent >= 0
+                            val batteryStatusValue = latestBatteryStatus?.getIntExtra(
+                                BatteryManager.EXTRA_STATUS,
+                                BatteryManager.BATTERY_STATUS_UNKNOWN
+                            ) ?: BatteryManager.BATTERY_STATUS_UNKNOWN
+                            val isCharging = batteryStatusValue == BatteryManager.BATTERY_STATUS_CHARGING ||
+                                    batteryStatusValue == BatteryManager.BATTERY_STATUS_FULL
                             var maxVLimit: Float? = null
                             var maxCLimit: Float? = null
                             if (isCharging && latestBatteryStatus != null) {
@@ -181,10 +245,6 @@ class ChargeLoggingService : Service() {
                             }
                             
                             val sessionId = prefs.getLong("CURRENT_SESSION_START", System.currentTimeMillis())
-                            val batteryStatusValue = latestBatteryStatus?.getIntExtra(
-                                BatteryManager.EXTRA_STATUS,
-                                BatteryManager.BATTERY_STATUS_UNKNOWN
-                            ) ?: BatteryManager.BATTERY_STATUS_UNKNOWN
 
                             val record = ChargeRecord(
                                 sessionId = sessionId,
@@ -236,7 +296,7 @@ class ChargeLoggingService : Service() {
                             if (batteryStatus != null) {
                                 val voltage = BatteryUtils.getVoltage(batteryStatus)
                                 val current = BatteryUtils.getCurrent(this@ChargeLoggingService, batteryStatus)
-                                val power = voltage * current
+                                val power = BatteryFlow.signedPowerWatts(voltage, current)
                                 val batteryLevel = BatteryUtils.getBatteryLevel(this@ChargeLoggingService, batteryStatus)
                                 updateNotification(voltage, current, power, batteryLevel, isRecording = false)
                                 updateBackgroundPowerStats(prefs, power)
@@ -249,7 +309,7 @@ class ChargeLoggingService : Service() {
                             if (batteryStatus != null) {
                                 val voltage = BatteryUtils.getVoltage(batteryStatus)
                                 val current = BatteryUtils.getCurrent(this@ChargeLoggingService, batteryStatus)
-                                val power = voltage * current
+                                val power = BatteryFlow.signedPowerWatts(voltage, current)
                                 updateBackgroundPowerStats(prefs, power)
                             }
                             kotlinx.coroutines.delay(30000L.milliseconds)
@@ -265,20 +325,23 @@ class ChargeLoggingService : Service() {
 
     private fun updateNotification(voltage: Float, current: Float, power: Float, batteryLevel: Int, isRecording: Boolean) {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        
-        val isDischarging = current < 0
-        val stateTitle = if (isDischarging) {
-            getString(R.string.service_discharging, power)
-        } else {
-            getString(R.string.service_charging, power)
+        val batteryStatusIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val batteryStatus = batteryStatusIntent?.getIntExtra(
+            BatteryManager.EXTRA_STATUS,
+            BatteryManager.BATTERY_STATUS_UNKNOWN
+        ) ?: BatteryManager.BATTERY_STATUS_UNKNOWN
+        val direction = BatteryFlow.direction(batteryStatus, current)
+        val stateTitle = when (direction) {
+            BatteryFlowDirection.CHARGING -> getString(R.string.service_charging, power)
+            BatteryFlowDirection.DISCHARGING -> getString(R.string.service_discharging, power)
+            BatteryFlowDirection.IDLE -> getString(R.string.service_not_charging, power)
         }
-        
+
         val recordStatus = if (isRecording) getString(R.string.service_status_recording) else getString(R.string.service_status_stopped)
-        
-        val batteryStatus = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        val limitText = if (batteryStatus != null && !isDischarging) {
-            val maxCurrentMicro = batteryStatus.getIntExtra("max_charging_current", -1)
-            val maxVoltageMicro = batteryStatus.getIntExtra("max_charging_voltage", -1)
+
+        val limitText = if (batteryStatusIntent != null && direction == BatteryFlowDirection.CHARGING) {
+            val maxCurrentMicro = batteryStatusIntent.getIntExtra("max_charging_current", -1)
+            val maxVoltageMicro = batteryStatusIntent.getIntExtra("max_charging_voltage", -1)
             if (maxCurrentMicro > 0 && maxVoltageMicro > 0) {
                 val maxCurrent = maxCurrentMicro / 1_000_000f
                 val maxVoltage = maxVoltageMicro / 1_000_000f
@@ -286,7 +349,6 @@ class ChargeLoggingService : Service() {
                 getString(R.string.service_notif_limit, maxVoltage, maxCurrent, maxPower)
             } else ""
         } else ""
-
         val contentText = getString(R.string.service_notif_format, recordStatus, limitText, batteryLevel, voltage, current)
 
         val openIntent = Intent(this, per.jau.chargelog.MainActivity::class.java).apply {
@@ -351,44 +413,16 @@ class ChargeLoggingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_START_RECORDING -> {
-                val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-                prefs.edit {
-                    putBoolean("IS_RECORDING", true)
-                }
-                triggerImmediateNotificationUpdate(true)
-                startLoggingLoop()
-            }
-            ACTION_STOP_RECORDING -> {
-                val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-                prefs.edit {
-                    putBoolean("IS_RECORDING", false)
-                    putBoolean("FORCE_NEW_SESSION", true)
-                }
-                triggerImmediateNotificationUpdate(false)
-                startLoggingLoop()
-            }
-            ACTION_EXIT_APP -> {
-                val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-                prefs.edit {
-                    putBoolean("IS_RECORDING", false)
-                    putBoolean("FORCE_NEW_SESSION", true)
-                    putBoolean("USER_EXITED", true)
-                }
-                stopSelf()
-                android.os.Process.killProcess(android.os.Process.myPid())
-            }
-        }
+        intent?.action?.let { commandChannel.trySend(it) }
         return START_STICKY
     }
-
     override fun onDestroy() {
         super.onDestroy()
         loggingJob?.cancel()
         if (wakeLock.isHeld) {
             wakeLock.release()
         }
+        commandChannel.close()
         job.cancel()
     }
 
@@ -408,9 +442,9 @@ class ChargeLoggingService : Service() {
 
     private fun updateBackgroundPowerStats(prefs: android.content.SharedPreferences, currentPower: Float) {
         val appInBackground = prefs.getBoolean("APP_IN_BACKGROUND", false)
-        if (appInBackground) {
+        if (appInBackground && currentPower.isFinite() && currentPower != 0f) {
             prefs.edit {
-                if (currentPower >= 0) {
+                if (currentPower > 0) {
                     // Charging power range
                     val minP = prefs.getFloat("BG_MIN_CHARGE_POWER", Float.MAX_VALUE)
                     val maxP = prefs.getFloat("BG_MAX_CHARGE_POWER", -Float.MAX_VALUE)
@@ -419,12 +453,13 @@ class ChargeLoggingService : Service() {
                     putFloat("BG_MIN_CHARGE_POWER", newMinP)
                     putFloat("BG_MAX_CHARGE_POWER", newMaxP)
                 } else {
-                    // Discharging power range (use absolute value)
-                    val absP = abs(currentPower)
-                    val minP = prefs.getFloat("BG_MIN_DISCHARGE_POWER", Float.MAX_VALUE)
-                    val maxP = prefs.getFloat("BG_MAX_DISCHARGE_POWER", -Float.MAX_VALUE)
-                    val newMinP = if (absP < minP) absP else minP
-                    val newMaxP = if (absP > maxP) absP else maxP
+                    // Keep signed net power and convert any old unsigned range in place.
+                    val storedMinP = prefs.getFloat("BG_MIN_DISCHARGE_POWER", Float.MAX_VALUE)
+                    val storedMaxP = prefs.getFloat("BG_MAX_DISCHARGE_POWER", -Float.MAX_VALUE)
+                    val minP = if (storedMinP >= 0f && storedMaxP >= 0f) -storedMaxP else storedMinP
+                    val maxP = if (storedMinP >= 0f && storedMaxP >= 0f) -storedMinP else storedMaxP
+                    val newMinP = if (currentPower < minP) currentPower else minP
+                    val newMaxP = if (currentPower > maxP) currentPower else maxP
                     putFloat("BG_MIN_DISCHARGE_POWER", newMinP)
                     putFloat("BG_MAX_DISCHARGE_POWER", newMaxP)
                 }
@@ -437,6 +472,7 @@ class ChargeLoggingService : Service() {
     companion object {
         const val CHANNEL_ID = "ChargeLogServiceChannel"
         const val NOTIFICATION_ID = 1
+        private const val SESSION_RESUME_WINDOW_MS = 5 * 60 * 1000L
         const val ACTION_START_RECORDING = "per.jau.chargelog.action.START_RECORDING"
         const val ACTION_STOP_RECORDING = "per.jau.chargelog.action.STOP_RECORDING"
         const val ACTION_EXIT_APP = "per.jau.chargelog.action.EXIT_APP"

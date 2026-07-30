@@ -31,6 +31,9 @@ interface ChargeDao {
     @Query("DELETE FROM charge_records WHERE timestamp < :time")
     suspend fun deleteOldRecords(time: Long)
 
+    @Query("DELETE FROM charge_records WHERE sessionId != :activeSessionId AND sessionId IN (SELECT sessionId FROM charge_records GROUP BY sessionId HAVING MAX(timestamp) < :cutoff)")
+    suspend fun deleteSessionsEndingBefore(cutoff: Long, activeSessionId: Long): Int
+
     @Query("DELETE FROM charge_records WHERE sessionId = :sessionId")
     suspend fun deleteRecordsBySession(sessionId: Long)
 

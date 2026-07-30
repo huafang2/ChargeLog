@@ -1,7 +1,12 @@
+import java.time.LocalDate
+import java.time.ZoneId
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.ksp)
 }
+
+val chargeLogBuildDate = LocalDate.now(ZoneId.systemDefault()).toString()
 
 android {
     namespace = "per.jau.chargelog"
@@ -12,8 +17,9 @@ android {
         minSdk = 31
         targetSdk = 36
 
-        versionCode = 17
-        versionName = "1.11"
+        versionCode = 20
+        versionName = "2.0"
+        buildConfigField("String", "BUILD_DATE", "\"$chargeLogBuildDate\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

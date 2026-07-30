@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="wrap_content"
     android:orientation="vertical"
     android:padding="16dp">
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="原始充电数据"
+        android:text="@string/raw_charging_data"
         android:textSize="20sp"
         android:textStyle="bold"
         android:layout_marginBottom="4dp"
@@ -18,7 +19,7 @@
         android:id="@+id/tvRawSummary"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textSize="14sp"
+        android:textSize="13sp"
         android:layout_marginBottom="12dp"
         android:textColor="?android:attr/textColorSecondary"
         android:visibility="gone"/>
@@ -27,15 +28,16 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="#11000000"
-        android:padding="8dp"
-        android:layout_marginBottom="4dp">
+        android:background="@drawable/bg_table_header"
+        android:padding="10dp"
+        android:layout_marginBottom="6dp">
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1.1"
-            android:text="时间"
+            android:text="@string/table_time"
+            android:textSize="12sp"
             android:textStyle="bold"
             android:textColor="?android:attr/textColorPrimary"/>
 
@@ -43,16 +45,8 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="0.6"
-            android:text="电压(V)"
-            android:textStyle="bold"
-            android:gravity="end"
-            android:textColor="?android:attr/textColorPrimary"/>
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="0.6"
-            android:text="电流(A)"
+            android:text="@string/table_voltage"
+            android:textSize="12sp"
             android:textStyle="bold"
             android:gravity="end"
             android:textColor="?android:attr/textColorPrimary"/>
@@ -61,7 +55,8 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="0.6"
-            android:text="功率(W)"
+            android:text="@string/table_current"
+            android:textSize="12sp"
             android:textStyle="bold"
             android:gravity="end"
             android:textColor="?android:attr/textColorPrimary"/>
@@ -70,7 +65,18 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="0.6"
-            android:text="电量(%)"
+            android:text="@string/table_power"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:gravity="end"
+            android:textColor="?android:attr/textColorPrimary"/>
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.6"
+            android:text="@string/table_battery"
+            android:textSize="12sp"
             android:textStyle="bold"
             android:gravity="end"
             android:textColor="?android:attr/textColorPrimary"/>
@@ -80,6 +86,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="0.7"
             android:text="@string/table_battery_status"
+            android:textSize="12sp"
             android:textStyle="bold"
             android:gravity="end"
             android:textColor="?android:attr/textColorPrimary"/>
@@ -88,7 +95,8 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1.1"
-            android:text="快充上限"
+            android:text="@string/table_limit"
+            android:textSize="12sp"
             android:textStyle="bold"
             android:gravity="end"
             android:textColor="?android:attr/textColorPrimary"/>
@@ -97,7 +105,8 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="0.6"
-            android:text="屏幕"
+            android:text="@string/table_screen"
+            android:textSize="12sp"
             android:textStyle="bold"
             android:gravity="end"
             android:textColor="?android:attr/textColorPrimary"/>
@@ -106,32 +115,42 @@
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvRawData"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_height="320dp" />
 
     <LinearLayout
-        style="?android:attr/buttonBarStyle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:layout_marginTop="12dp">
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnExportCSV"
-            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="44dp"
             android:layout_weight="1"
-            android:text="导出 CSV"
+            android:text="@string/export_csv"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:cornerRadius="22dp"
+            app:backgroundTint="@color/btn_bg_obsidian"
+            android:textColor="@color/white"
             android:layout_marginEnd="8dp" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCloseDialog"
-            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="44dp"
             android:layout_weight="1"
-            android:text="关闭"
+            android:text="@string/close"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:cornerRadius="22dp"
+            app:backgroundTint="@color/btn_bg_slate_light"
+            android:textColor="@color/btn_text_slate"
             android:layout_marginStart="8dp"/>
     </LinearLayout>
 </LinearLayout>
