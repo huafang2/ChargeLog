@@ -181,6 +181,10 @@ class ChargeLoggingService : Service() {
                             }
                             
                             val sessionId = prefs.getLong("CURRENT_SESSION_START", System.currentTimeMillis())
+                            val batteryStatusValue = latestBatteryStatus?.getIntExtra(
+                                BatteryManager.EXTRA_STATUS,
+                                BatteryManager.BATTERY_STATUS_UNKNOWN
+                            ) ?: BatteryManager.BATTERY_STATUS_UNKNOWN
 
                             val record = ChargeRecord(
                                 sessionId = sessionId,
@@ -191,7 +195,8 @@ class ChargeLoggingService : Service() {
                                 batteryLevel = latestBatteryLevel,
                                 screenState = if (isInteractive) 1 else 0,
                                 maxVoltage = maxVLimit,
-                                maxCurrent = maxCLimit
+                                maxCurrent = maxCLimit,
+                                batteryStatus = batteryStatusValue
                             )
 
                             db.chargeDao().insert(record)

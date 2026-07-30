@@ -2,8 +2,10 @@ package per.jau.chargelog
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.BatteryManager
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
@@ -53,6 +55,14 @@ import kotlin.math.abs
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.core.net.toUri
 
+
+private fun batteryStatusLabel(context: Context, status: Int): String = when (status) {
+    BatteryManager.BATTERY_STATUS_CHARGING -> context.getString(R.string.battery_status_charging)
+    BatteryManager.BATTERY_STATUS_FULL -> context.getString(R.string.battery_status_full)
+    BatteryManager.BATTERY_STATUS_NOT_CHARGING -> context.getString(R.string.battery_status_not_charging)
+    BatteryManager.BATTERY_STATUS_DISCHARGING -> context.getString(R.string.battery_status_discharging)
+    else -> context.getString(R.string.battery_status_unknown)
+}
 class MainActivity : AppCompatActivity() {
 
     private val exportCsvLauncher = registerForActivityResult(
@@ -1153,7 +1163,7 @@ class MainActivity : AppCompatActivity() {
                 contentResolver.openOutputStream(uri)?.use { outputStream ->
                     outputStream.bufferedWriter().use { writer ->
                         // CSV header
-                        writer.write("时间,电压(V),电流(A),功率(W),电量(%),快充上限,屏幕状态\n")
+                        writer.write("时间,电压(V),电流(A),功率(W),电量(%),电池状态,快充上限,屏幕状态\n")
                         
                         val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                         for (record in currentRecords) {
@@ -1163,6 +1173,7 @@ class MainActivity : AppCompatActivity() {
                                 1 -> "亮屏"
                                 else -> "未知"
                             }
+                            val batteryStatusStr = batteryStatusLabel(this@MainActivity, record.batteryStatus)
                             val limitStr = if (record.maxVoltage != null && record.maxCurrent != null && record.maxVoltage > 0 && record.maxCurrent > 0) {
                                 val maxPower = record.maxVoltage * record.maxCurrent
                                 val vStr = if (record.maxVoltage % 1 == 0f) String.format(Locale.US, "%.0f", record.maxVoltage) else String.format(Locale.US, "%.1f", record.maxVoltage)
@@ -1174,8 +1185,9 @@ class MainActivity : AppCompatActivity() {
                             }
                             writer.write(String.format(
                                 Locale.getDefault(),
-                                "%s,%.2f,%.2f,%.2f,%d,%s,%s\n",
-                                timeStr, record.voltage, record.current, record.power, record.batteryLevel, limitStr, screenStateStr
+                                "%s,%.2f,%.2f,%.2f,%d,%s,%s,%s\n",
+                                timeStr, record.voltage, record.current, record.power, record.batteryLevel,
+                                batteryStatusStr, limitStr, screenStateStr
                             ))
                         }
                     }
@@ -1332,6 +1344,7 @@ class RawDataAdapter(private val records: List<ChargeRecord>) : RecyclerView.Ada
         holder.tvRawCurrent.text = String.format(Locale.getDefault(), "%.2f", record.current)
         holder.tvRawPower.text = String.format(Locale.getDefault(), "%.2f", record.power)
         holder.tvRawBattery.text = record.batteryLevel.toString()
+        holder.tvRawBatteryStatus.text = batteryStatusLabel(holder.itemView.context, record.batteryStatus)
         holder.tvRawScreenState.text = when (record.screenState) {
             0 -> "锁屏"
             1 -> "亮屏"
@@ -1358,6 +1371,7 @@ class RawDataAdapter(private val records: List<ChargeRecord>) : RecyclerView.Ada
         val tvRawCurrent: TextView = view.findViewById(R.id.tvRawCurrent)
         val tvRawPower: TextView = view.findViewById(R.id.tvRawPower)
         val tvRawBattery: TextView = view.findViewById(R.id.tvRawBattery)
+        val tvRawBatteryStatus: TextView = view.findViewById(R.id.tvRawBatteryStatus)
         val tvRawMaxPower: TextView = view.findViewById(R.id.tvRawMaxPower)
         val tvRawScreenState: TextView = view.findViewById(R.id.tvRawScreenState)
     }

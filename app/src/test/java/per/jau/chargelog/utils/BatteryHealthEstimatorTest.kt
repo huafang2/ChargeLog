@@ -1,5 +1,6 @@
 package per.jau.chargelog.utils
 
+import android.os.BatteryManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -31,18 +32,74 @@ class BatteryHealthEstimatorTest {
     }
 
     @Test
-    fun usesLongestContinuousChargingPartOfEachHistoryRecord() {
-        val charging = session(1L, startLevel = 10, endLevel = 60).toMutableList()
-        charging += record(1L, charging.last().timestamp + 60_000L, 59, -0.5f)
+    fun subtractsNegativeCurrentWithoutBreakingOnBatteryLevelDrop() {
+        val base = 10_000_000L
+        val records = listOf(
+            record(1L, base, 20, 1f),
+            record(1L, base + 3_600_000L, 45, 1f),
+            record(1L, base + 5_400_000L, 40, -1f),
+            record(1L, base + 7_200_000L, 35, -1f),
+            record(1L, base + 9_000_000L, 45, 1f),
+            record(1L, base + 14_400_000L, 70, 1f)
+        )
 
-        val result = BatteryHealthEstimator.estimate(listOf(charging), 4000f)
+        val result = BatteryHealthEstimator.estimate(listOf(records), 4000f)
 
         assertTrue(result is BatteryHealthResult.Ready)
-        assertEquals(
-            4000f,
-            (result as BatteryHealthResult.Ready).estimate.estimatedFullCapacityMah,
-            0.5f
+        val estimate = (result as BatteryHealthResult.Ready).estimate
+        assertEquals(2750f, estimate.positiveChargedCapacityMah, 0.5f)
+        assertEquals(750f, estimate.dischargedCapacityMah, 0.5f)
+        assertEquals(2000f, estimate.netChargedCapacityMah, 0.5f)
+        assertEquals(4000f, estimate.estimatedFullCapacityMah, 0.5f)
+        assertEquals(50, estimate.totalBatterySpanPercent)
+    }
+
+    @Test
+    fun newRecordsIncludeTransitionToFullAndIgnoreSamplesAfterFull() {
+        val base = 20_000_000L
+        val throughFull = listOf(
+            record(2L, base, 50, 1f, BatteryManager.BATTERY_STATUS_CHARGING),
+            record(2L, base + 7_200_000L, 100, 1f, BatteryManager.BATTERY_STATUS_CHARGING),
+            record(2L, base + 7_560_000L, 100, 0f, BatteryManager.BATTERY_STATUS_FULL)
         )
+        val withPostFullTail = throughFull + record(
+            2L,
+            base + 11_160_000L,
+            100,
+            2f,
+            BatteryManager.BATTERY_STATUS_FULL
+        )
+
+        val withoutTail = BatteryHealthEstimator.estimate(listOf(throughFull), 4000f)
+        val withTail = BatteryHealthEstimator.estimate(listOf(withPostFullTail), 4000f)
+
+        assertTrue(withoutTail is BatteryHealthResult.Ready)
+        assertTrue(withTail is BatteryHealthResult.Ready)
+        val expected = (withoutTail as BatteryHealthResult.Ready).estimate
+        val actual = (withTail as BatteryHealthResult.Ready).estimate
+        assertEquals(2050f, actual.netChargedCapacityMah, 0.5f)
+        assertEquals(expected.netChargedCapacityMah, actual.netChargedCapacityMah, 0.01f)
+        assertEquals(expected.estimatedFullCapacityMah, actual.estimatedFullCapacityMah, 0.01f)
+        assertTrue(!actual.hasUnknownBatteryStatus)
+    }
+
+    @Test
+    fun legacyRecordsKeepTheEntireUnknownStatusTailAfterOneHundredPercent() {
+        val base = 30_000_000L
+        val records = listOf(
+            record(3L, base, 50, 1f),
+            record(3L, base + 7_200_000L, 100, 1f),
+            record(3L, base + 10_800_000L, 100, 1f)
+        )
+
+        val result = BatteryHealthEstimator.estimate(listOf(records), 4000f)
+
+        assertTrue(result is BatteryHealthResult.Ready)
+        val estimate = (result as BatteryHealthResult.Ready).estimate
+        assertEquals(3000f, estimate.netChargedCapacityMah, 0.5f)
+        assertEquals(6000f, estimate.estimatedFullCapacityMah, 0.5f)
+        assertTrue(estimate.hasUnknownBatteryStatus)
+        assertTrue(estimate.hasLegacyFullTail)
     }
 
     private fun session(id: Long, startLevel: Int, endLevel: Int): List<ChargeRecord> {
@@ -55,12 +112,19 @@ class BatteryHealthEstimatorTest {
         )
     }
 
-    private fun record(id: Long, timestamp: Long, level: Int, current: Float) = ChargeRecord(
+    private fun record(
+        id: Long,
+        timestamp: Long,
+        level: Int,
+        current: Float,
+        batteryStatus: Int = BatteryManager.BATTERY_STATUS_UNKNOWN
+    ) = ChargeRecord(
         sessionId = id,
         timestamp = timestamp,
         voltage = 4f,
         current = current,
         power = 4f * current,
-        batteryLevel = level
+        batteryLevel = level,
+        batteryStatus = batteryStatus
     )
 }

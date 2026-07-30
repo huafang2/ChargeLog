@@ -50,6 +50,15 @@
         android:textColor="?android:attr/textColorPrimary"/>
 
     <TextView
+        android:id="@+id/tvRawBatteryStatus"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="0.7"
+        android:textSize="13sp"
+        android:gravity="end"
+        android:textColor="?android:attr/textColorPrimary"/>
+
+    <TextView
         android:id="@+id/tvRawMaxPower"
         android:layout_width="0dp"
         android:layout_height="wrap_content"

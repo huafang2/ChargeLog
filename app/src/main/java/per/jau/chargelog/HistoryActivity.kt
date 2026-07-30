@@ -2,6 +2,7 @@ package per.jau.chargelog
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.os.BatteryManager
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -287,7 +288,7 @@ class HistoryActivity : AppCompatActivity() {
                 R.string.health_need_more_data,
                 result.totalBatterySpanPercent
             )
-            BatteryHealthResult.Invalid -> getString(R.string.health_invalid_data)
+            BatteryHealthResult.Invalid -> getString(R.string.health_invalid_net_data)
             is BatteryHealthResult.Ready -> {
                 val estimate = result.estimate
                 val confidence = when (estimate.confidence) {
@@ -312,7 +313,32 @@ class HistoryActivity : AppCompatActivity() {
                         confidence
                     )
                 }
-                "$details\n\n${getString(R.string.health_result_notice)}"
+                buildString {
+                    append(details)
+                    append("\n\n")
+                    append(
+                        getString(
+                            R.string.health_charge_breakdown,
+                            estimate.positiveChargedCapacityMah,
+                            estimate.dischargedCapacityMah,
+                            estimate.netChargedCapacityMah
+                        )
+                    )
+                    append("\n")
+                    append(
+                        getString(
+                            if (estimate.hasUnknownBatteryStatus) {
+                                R.string.health_status_unknown
+                            } else {
+                                R.string.health_status_known
+                            }
+                        )
+                    )
+                    if (estimate.hasLegacyFullTail) {
+                        append("\n\n${getString(R.string.health_legacy_full_tail_notice)}")
+                    }
+                    append("\n\n${getString(R.string.health_signed_result_notice)}")
+                }
             }
         }
         AlertDialog.Builder(this)
@@ -344,6 +370,7 @@ class HistoryActivity : AppCompatActivity() {
                         recObj.put("power", rec.power.toDouble())
                         recObj.put("batteryLevel", rec.batteryLevel)
                         recObj.put("screenState", rec.screenState)
+                        recObj.put("batteryStatus", rec.batteryStatus)
                         
                         if (rec.maxVoltage != null) recObj.put("maxVoltage", rec.maxVoltage.toDouble())
                         if (rec.maxCurrent != null) recObj.put("maxCurrent", rec.maxCurrent.toDouble())
@@ -407,6 +434,7 @@ class HistoryActivity : AppCompatActivity() {
                         val power = recObj.getDouble("power").toFloat()
                         val batteryLevel = recObj.getInt("batteryLevel")
                         val screenState = recObj.optInt("screenState", 2)
+                        val batteryStatus = recObj.optInt("batteryStatus", BatteryManager.BATTERY_STATUS_UNKNOWN)
                         
                         val maxVoltage = if (recObj.isNull("maxVoltage")) null else recObj.optDouble("maxVoltage").toFloat()
                         val maxCurrent = if (recObj.isNull("maxCurrent")) null else recObj.optDouble("maxCurrent").toFloat()
@@ -420,7 +448,8 @@ class HistoryActivity : AppCompatActivity() {
                             batteryLevel = batteryLevel,
                             screenState = screenState,
                             maxVoltage = maxVoltage,
-                            maxCurrent = maxCurrent
+                            maxCurrent = maxCurrent,
+                            batteryStatus = batteryStatus
                         )
                         
                         if (localRecordMap == null) {
@@ -436,7 +465,8 @@ class HistoryActivity : AppCompatActivity() {
                                         localRecord.batteryLevel == batteryLevel &&
                                         localRecord.screenState == screenState &&
                                         localRecord.maxVoltage == maxVoltage &&
-                                        localRecord.maxCurrent == maxCurrent
+                                        localRecord.maxCurrent == maxCurrent &&
+                                        localRecord.batteryStatus == batteryStatus
                                 
                                 if (!isConsistent) {
                                     conflicts.add(Pair(localRecord, importedRecord))

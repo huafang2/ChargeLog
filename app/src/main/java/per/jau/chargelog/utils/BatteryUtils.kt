@@ -45,33 +45,17 @@ object BatteryUtils {
         return 0f
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun getCurrent(context: Context, batteryStatus: Intent? = null): Float {
-        // Determine charging state dynamically to sign current correctly
-        val status = if (batteryStatus != null) {
-            batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-        } else {
-            val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-            val intent = context.registerReceiver(null, filter)
-            intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-        }
-        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                status == BatteryManager.BATTERY_STATUS_FULL
-
-        val sysfsCurrent = readSysfs("/sys/class/power_supply/battery/current_now")
-        val currentVal = if (sysfsCurrent != null) {
-            Math.abs(sysfsCurrent) / 1000000f // microamps to Amps
-        } else {
-            val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-            val currentNow = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-            if (currentNow != Int.MIN_VALUE && currentNow != Int.MAX_VALUE) {
-                Math.abs(currentNow.toLong()) / 1000000f // microamps to Amps
-            } else {
-                0f
-            }
+        // CURRENT_NOW is signed net current at the battery: positive enters, negative leaves.
+        val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val currentNow = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+        if (currentNow != Int.MIN_VALUE && currentNow != Int.MAX_VALUE) {
+            return currentNow / 1_000_000f
         }
 
-        // Return positive current for charging, negative for discharging
-        return if (isCharging) currentVal else -currentVal
+        // Keep the kernel-defined sign when the framework property is unavailable.
+        return readSysfs("/sys/class/power_supply/battery/current_now")?.div(1_000_000f) ?: 0f
     }
 
     fun getBatteryLevel(context: Context, batteryStatus: Intent? = null): Int {
