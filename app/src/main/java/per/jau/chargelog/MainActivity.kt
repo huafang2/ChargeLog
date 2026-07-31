@@ -1,18 +1,18 @@
 package per.jau.chargelog
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.BatteryManager
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.transition.ChangeBounds
@@ -28,15 +28,15 @@ import android.widget.Button
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
-import androidx.core.os.LocaleListCompat
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.content.withStyledAttributes
 import androidx.core.graphics.toColorInt
+import androidx.core.net.toUri
+import androidx.core.os.LocaleListCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
@@ -58,8 +58,8 @@ import kotlinx.coroutines.launch
 import per.jau.chargelog.data.ChargeDatabase
 import per.jau.chargelog.data.ChargeRecord
 import per.jau.chargelog.service.ChargeLoggingService
-import per.jau.chargelog.utils.BatteryUtils
 import per.jau.chargelog.utils.BatteryFlow
+import per.jau.chargelog.utils.BatteryUtils
 import per.jau.chargelog.utils.FastChargeLimit
 import per.jau.chargelog.utils.HistoryRetention
 import java.text.SimpleDateFormat
@@ -67,7 +67,8 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.time.Duration.Companion.milliseconds
-import androidx.core.net.toUri
+import androidx.core.view.isVisible
+import androidx.core.view.isGone
 
 
 private fun batteryStatusLabel(context: Context, status: Int): String = when (status) {
@@ -110,6 +111,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvCurrentProtocol: TextView
     private lateinit var layoutMaxChargingLimit: View
     private lateinit var tvCurrentMaxPower: TextView
+    private lateinit var layoutPowerSummaryBanner: View
+    private lateinit var tvPowerSummaryText: TextView
     private var maxChargingLimitAnimator: AnimatorSet? = null
     private var maxChargingLimitTargetVisible = false
     private var maxChargingLimitVoltage: Float? = null
@@ -226,6 +229,8 @@ class MainActivity : AppCompatActivity() {
         tvCurrentProtocol = findViewById(R.id.tvCurrentProtocol)
         layoutMaxChargingLimit = findViewById(R.id.layoutMaxChargingLimit)
         tvCurrentMaxPower = findViewById(R.id.tvCurrentMaxPower)
+        layoutPowerSummaryBanner = findViewById(R.id.layoutPowerSummaryBanner)
+        tvPowerSummaryText = findViewById(R.id.tvPowerSummaryText)
         restoreMaxChargingLimitState(savedInstanceState)
 
         val tvFooter = findViewById<TextView>(R.id.tvFooter)
@@ -662,6 +667,7 @@ class MainActivity : AppCompatActivity() {
                     if (index != -1) {
                         val record = currentRecords[index]
                         updateDashboardText(record, true)
+                        updatePowerTabSummary(index)
                         menuDeleteSegment?.isVisible = true
                         // Sync scrubber if not dragging it
                         if (!isDraggingScrubber) {
@@ -682,6 +688,7 @@ class MainActivity : AppCompatActivity() {
                         updateDashboardText(currentRecords.last(), false)
                     }
                 }
+                updatePowerTabSummary()
             }
         })
 
@@ -730,6 +737,7 @@ class MainActivity : AppCompatActivity() {
                     // Highlight the point
                     val highlight = Highlight(x, 0, 0) // dataSetIndex 0
                     lineChart.highlightValue(highlight, true)
+                    updatePowerTabSummary(progress)
                     
                     // Center the chart on the highlighted point if zoomed
                     lineChart.centerViewToAnimated(x, lineChart.centerOfView.y, lineChart.data.getDataSetByIndex(0).axisDependency, 100)
@@ -963,8 +971,8 @@ class MainActivity : AppCompatActivity() {
     private fun animateMaxChargingLimitVisibility(show: Boolean) {
         if (maxChargingLimitTargetVisible == show) {
             if (maxChargingLimitAnimator != null) return
-            if (show && layoutMaxChargingLimit.visibility == View.VISIBLE) return
-            if (!show && layoutMaxChargingLimit.visibility == View.GONE) return
+            if (show && layoutMaxChargingLimit.isVisible) return
+            if (!show && layoutMaxChargingLimit.isGone) return
         }
         maxChargingLimitTargetVisible = show
 
@@ -1371,6 +1379,58 @@ class MainActivity : AppCompatActivity() {
         lineChart.data = lineData
         lineChart.notifyDataSetChanged()
         lineChart.invalidate()
+        updatePowerTabSummary()
+    }
+
+    private fun updatePowerTabSummary(targetIndex: Int = -1) {
+        if (!::layoutPowerSummaryBanner.isInitialized || !::tvPowerSummaryText.isInitialized) return
+        if (selectedTabIndex != 2 || currentRecords.isEmpty()) {
+            layoutPowerSummaryBanner.visibility = View.GONE
+            return
+        }
+
+        val firstRecord = currentRecords.first()
+        val endIndex = if (targetIndex in currentRecords.indices) targetIndex else currentRecords.size - 1
+        val targetRecord = currentRecords[endIndex]
+
+        val startBat = firstRecord.batteryLevel
+        val endBat = targetRecord.batteryLevel
+        val batChange = endBat - startBat
+        val changeSign = if (batChange >= 0) "+$batChange%" else "$batChange%"
+
+        var totalChargedmAh = 0.0
+        var totalChargedWh = 0.0
+        for (i in 1..endIndex) {
+            val rPrev = currentRecords[i - 1]
+            val rCurr = currentRecords[i]
+            val dtHours = (rCurr.timestamp - rPrev.timestamp) / 3600000.0
+            if (dtHours > 0 && dtHours < 1.0) {
+                val avgCurrentA = (rPrev.current + rCurr.current) / 2.0
+                val avgPowerW = (rPrev.power + rCurr.power) / 2.0
+                if (avgCurrentA > 0) {
+                    totalChargedmAh += avgCurrentA * 1000.0 * dtHours
+                }
+                if (avgPowerW > 0) {
+                    totalChargedWh += avgPowerW * dtHours
+                }
+            }
+        }
+
+        val mahWhStr = if (totalChargedmAh > 0.5) {
+            val whFormatted = String.format(Locale.getDefault(), "%.1f", totalChargedWh)
+            getString(R.string.power_charged_mah_wh, totalChargedmAh.toInt(), whFormatted)
+        } else {
+            ""
+        }
+
+        val text = if (targetIndex in currentRecords.indices && targetIndex < currentRecords.size - 1) {
+            getString(R.string.power_charged_summary_selected, changeSign, startBat, endBat, mahWhStr)
+        } else {
+            getString(R.string.power_charged_summary_total, changeSign, startBat, endBat, mahWhStr)
+        }
+
+        tvPowerSummaryText.text = text
+        layoutPowerSummaryBanner.visibility = View.VISIBLE
     }
     override fun onResume() {
         super.onResume()

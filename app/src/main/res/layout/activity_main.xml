@@ -98,7 +98,8 @@
             android:layout_columnWeight="1"
             android:orientation="vertical"
             android:background="@drawable/bg_card_voltage"
-            android:padding="12dp"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="10dp"
             android:layout_marginEnd="4dp"
             android:layout_marginBottom="8dp">
 
@@ -107,11 +108,15 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="⚡ 电压: -- V"
-                android:textSize="17sp"
+                android:textSize="15sp"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="11sp"
+                app:autoSizeMaxTextSize="16sp"
+                app:autoSizeStepGranularity="1sp"
                 android:singleLine="true"
                 android:includeFontPadding="false"
                 android:maxLines="1"
-                android:ellipsize="none"
+                android:ellipsize="end"
                 android:textStyle="bold"
                 android:textColor="?android:attr/textColorPrimary"
                 android:gravity="center_vertical" />
@@ -124,7 +129,8 @@
             android:layout_columnWeight="1"
             android:orientation="vertical"
             android:background="@drawable/bg_card_current"
-            android:padding="12dp"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="10dp"
             android:layout_marginStart="4dp"
             android:layout_marginBottom="8dp">
 
@@ -133,11 +139,15 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="🔃 电流: -- A"
-                android:textSize="17sp"
+                android:textSize="15sp"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="11sp"
+                app:autoSizeMaxTextSize="16sp"
+                app:autoSizeStepGranularity="1sp"
                 android:singleLine="true"
                 android:includeFontPadding="false"
                 android:maxLines="1"
-                android:ellipsize="none"
+                android:ellipsize="end"
                 android:textStyle="bold"
                 android:textColor="?android:attr/textColorPrimary"
                 android:gravity="center_vertical" />
@@ -150,7 +160,8 @@
             android:layout_columnWeight="1"
             android:orientation="vertical"
             android:background="@drawable/bg_card_power"
-            android:padding="12dp"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="10dp"
             android:layout_marginEnd="4dp"
             android:layout_marginBottom="8dp">
 
@@ -159,11 +170,15 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="💪 功率: -- W"
-                android:textSize="17sp"
+                android:textSize="15sp"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="11sp"
+                app:autoSizeMaxTextSize="16sp"
+                app:autoSizeStepGranularity="1sp"
                 android:singleLine="true"
                 android:includeFontPadding="false"
                 android:maxLines="1"
-                android:ellipsize="none"
+                android:ellipsize="end"
                 android:textStyle="bold"
                 android:textColor="?android:attr/textColorPrimary"
                 android:gravity="center_vertical" />
@@ -176,7 +191,8 @@
             android:layout_columnWeight="1"
             android:orientation="vertical"
             android:background="@drawable/bg_card_battery"
-            android:padding="12dp"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="10dp"
             android:layout_marginStart="4dp"
             android:layout_marginBottom="8dp">
 
@@ -185,11 +201,15 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="🔋 电量: --"
-                android:textSize="17sp"
+                android:textSize="15sp"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="11sp"
+                app:autoSizeMaxTextSize="16sp"
+                app:autoSizeStepGranularity="1sp"
                 android:singleLine="true"
                 android:includeFontPadding="false"
                 android:maxLines="1"
-                android:ellipsize="none"
+                android:ellipsize="end"
                 android:textStyle="bold"
                 android:textColor="?android:attr/textColorPrimary"
                 android:gravity="center_vertical" />
@@ -452,6 +472,29 @@
         android:layout_marginTop="4dp"
         android:layout_marginBottom="4dp"
         android:visibility="gone" />
+
+    <!-- Power Chart Charged Energy Summary Banner (Non-overlapping) -->
+    <LinearLayout
+        android:id="@+id/layoutPowerSummaryBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:background="@drawable/bg_card_surface"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="7dp"
+        android:layout_marginTop="2dp"
+        android:layout_marginBottom="4dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvPowerSummaryText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="@color/dashboard_value_summary" />
+    </LinearLayout>
 
     <!-- Background Stats Custom Banner -->
     <LinearLayout
