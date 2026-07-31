@@ -106,7 +106,7 @@
                 android:id="@+id/tvCurrentVoltage"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="电压: -- V"
+                android:text="⚡ 电压: -- V"
                 android:textSize="17sp"
                 android:singleLine="true"
                 android:includeFontPadding="false"
@@ -114,9 +114,6 @@
                 android:ellipsize="none"
                 android:textStyle="bold"
                 android:textColor="?android:attr/textColorPrimary"
-                app:drawableStartCompat="@drawable/ic_voltage"
-                app:drawableTint="@color/dashboard_icon_tint"
-                android:drawablePadding="6dp"
                 android:gravity="center_vertical" />
         </LinearLayout>
 
@@ -135,7 +132,7 @@
                 android:id="@+id/tvCurrentCurrent"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="电流: -- A"
+                android:text="🔃 电流: -- A"
                 android:textSize="17sp"
                 android:singleLine="true"
                 android:includeFontPadding="false"
@@ -143,9 +140,6 @@
                 android:ellipsize="none"
                 android:textStyle="bold"
                 android:textColor="?android:attr/textColorPrimary"
-                app:drawableStartCompat="@drawable/ic_current"
-                app:drawableTint="@color/dashboard_icon_tint"
-                android:drawablePadding="6dp"
                 android:gravity="center_vertical" />
         </LinearLayout>
 
@@ -164,7 +158,7 @@
                 android:id="@+id/tvCurrentPower"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="功率: -- W"
+                android:text="💪 功率: -- W"
                 android:textSize="17sp"
                 android:singleLine="true"
                 android:includeFontPadding="false"
@@ -172,9 +166,6 @@
                 android:ellipsize="none"
                 android:textStyle="bold"
                 android:textColor="?android:attr/textColorPrimary"
-                app:drawableStartCompat="@drawable/ic_power_gauge"
-                app:drawableTint="@color/dashboard_icon_tint"
-                android:drawablePadding="6dp"
                 android:gravity="center_vertical" />
         </LinearLayout>
 
@@ -193,7 +184,7 @@
                 android:id="@+id/tvCurrentProtocol"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="电量: --"
+                android:text="🔋 电量: --"
                 android:textSize="17sp"
                 android:singleLine="true"
                 android:includeFontPadding="false"
@@ -201,9 +192,6 @@
                 android:ellipsize="none"
                 android:textStyle="bold"
                 android:textColor="?android:attr/textColorPrimary"
-                app:drawableStartCompat="@drawable/ic_battery_full"
-                app:drawableTint="@color/dashboard_icon_tint"
-                android:drawablePadding="6dp"
                 android:gravity="center_vertical" />
         </LinearLayout>
 

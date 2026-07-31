@@ -13,6 +13,8 @@ object BatteryFlow {
     fun signedPowerWatts(voltage: Float, current: Float): Float = voltage * current
 
     fun normalizeNetCurrent(current: Float, batteryStatus: Int): Float = when (batteryStatus) {
+        BatteryManager.BATTERY_STATUS_CHARGING,
+        BatteryManager.BATTERY_STATUS_FULL -> abs(current)
         BatteryManager.BATTERY_STATUS_DISCHARGING,
         BatteryManager.BATTERY_STATUS_NOT_CHARGING -> -abs(current)
         else -> current

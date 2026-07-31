@@ -48,10 +48,20 @@ class BatteryFlowTest {
     }
 
     @Test
-    fun negativeCurrentWhileChargingIsPreservedForNetIntegration() {
+    fun negativeCurrentWhileChargingIsNormalizedToPositive() {
         assertEquals(
-            -1f,
+            1f,
             BatteryFlow.normalizeNetCurrent(-1f, BatteryManager.BATTERY_STATUS_CHARGING),
+            0.001f
+        )
+        assertEquals(
+            1f,
+            BatteryFlow.normalizeNetCurrent(1f, BatteryManager.BATTERY_STATUS_CHARGING),
+            0.001f
+        )
+        assertEquals(
+            1f,
+            BatteryFlow.normalizeNetCurrent(-1f, BatteryManager.BATTERY_STATUS_FULL),
             0.001f
         )
     }

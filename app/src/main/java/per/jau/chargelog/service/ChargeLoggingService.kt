@@ -331,10 +331,11 @@ class ChargeLoggingService : Service() {
             BatteryManager.BATTERY_STATUS_UNKNOWN
         ) ?: BatteryManager.BATTERY_STATUS_UNKNOWN
         val direction = BatteryFlow.direction(batteryStatus, current)
-        val stateTitle = when (direction) {
-            BatteryFlowDirection.CHARGING -> getString(R.string.service_charging, power)
-            BatteryFlowDirection.DISCHARGING -> getString(R.string.service_discharging, power)
-            BatteryFlowDirection.IDLE -> getString(R.string.service_not_charging, power)
+        val stateTitle = when {
+            batteryStatus == BatteryManager.BATTERY_STATUS_FULL -> getString(R.string.service_full, power)
+            direction == BatteryFlowDirection.CHARGING -> getString(R.string.service_charging, power)
+            direction == BatteryFlowDirection.DISCHARGING -> getString(R.string.service_discharging, power)
+            else -> getString(R.string.service_not_charging, power)
         }
 
         val recordStatus = if (isRecording) getString(R.string.service_status_recording) else getString(R.string.service_status_stopped)
