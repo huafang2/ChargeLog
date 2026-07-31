@@ -160,6 +160,8 @@
     <!-- Power Chart Charged Energy Summary -->
     <string name="power_charged_summary_total">⚡ 本次累计充入: %1$s (%2$d%% → %3$d%%)%4$s</string>
     <string name="power_charged_summary_selected">⚡ 至选定点累计充入: %1$s (%2$d%% → %3$d%%)%4$s</string>
+    <string name="power_discharged_summary_total">⚡ 本次累计消耗: %1$s (%2$d%% → %3$d%%)%4$s</string>
+    <string name="power_discharged_summary_selected">⚡ 至选定点累计消耗: %1$s (%2$d%% → %3$d%%)%4$s</string>
     <string name="power_charged_mah_wh"> · 约 %1$d mAh (%2$s Wh)</string>
 
     <string name="export_history">导出</string>

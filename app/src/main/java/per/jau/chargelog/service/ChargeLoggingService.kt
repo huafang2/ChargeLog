@@ -17,12 +17,13 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import per.jau.chargelog.R
-import per.jau.chargelog.data.ChargeDatabase
+import per.jau.chargelog.data.ChargeRepository
 import per.jau.chargelog.data.ChargeRecord
 import per.jau.chargelog.utils.BatteryUtils
 import per.jau.chargelog.utils.BatteryFlow
 import per.jau.chargelog.utils.BatteryFlowDirection
 import per.jau.chargelog.utils.HistoryRetention
+import per.jau.chargelog.constants.PrefKeys
 import androidx.core.content.edit
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -80,13 +81,13 @@ class ChargeLoggingService : Service() {
     }
 
     private suspend fun initializeSessionState() {
-        val db = ChargeDatabase.getDatabase(this)
-        val latest = db.chargeDao().getLatestRecord()
+        val repo = ChargeRepository.getInstance(this)
+        val latest = repo.getLatestRecord()
         val now = System.currentTimeMillis()
-        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-        val isRecording = prefs.getBoolean("IS_RECORDING", false)
-        val forceNew = prefs.getBoolean("FORCE_NEW_SESSION", false)
-        val existingStart = prefs.getLong("CURRENT_SESSION_START", 0L)
+        val prefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
+        val isRecording = prefs.getBoolean(PrefKeys.IS_RECORDING, false)
+        val forceNew = prefs.getBoolean(PrefKeys.FORCE_NEW_SESSION, false)
+        val existingStart = prefs.getLong(PrefKeys.CURRENT_SESSION_START, 0L)
 
         if (isRecording) {
             val canResume = !forceNew && latest != null &&
@@ -97,47 +98,47 @@ class ChargeLoggingService : Service() {
                 now
             }
             prefs.edit {
-                putLong("CURRENT_SESSION_START", sessionStart)
-                putBoolean("FORCE_NEW_SESSION", false)
+                putLong(PrefKeys.CURRENT_SESSION_START, sessionStart)
+                putBoolean(PrefKeys.FORCE_NEW_SESSION, false)
             }
         } else if (existingStart <= 0L) {
-            prefs.edit { putLong("CURRENT_SESSION_START", now) }
+            prefs.edit { putLong(PrefKeys.CURRENT_SESSION_START, now) }
         }
     }
 
     private fun handleServiceAction(action: String) {
-        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+        val prefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
         when (action) {
             ACTION_START_RECORDING -> {
-                val wasRecording = prefs.getBoolean("IS_RECORDING", false)
-                val forceNew = prefs.getBoolean("FORCE_NEW_SESSION", false)
+                val wasRecording = prefs.getBoolean(PrefKeys.IS_RECORDING, false)
+                val forceNew = prefs.getBoolean(PrefKeys.FORCE_NEW_SESSION, false)
                 val sessionId = RecordingSessionPolicy.sessionIdForStart(
                     wasRecording = wasRecording,
                     forceNew = forceNew,
-                    existingSessionId = prefs.getLong("CURRENT_SESSION_START", 0L),
+                    existingSessionId = prefs.getLong(PrefKeys.CURRENT_SESSION_START, 0L),
                     now = System.currentTimeMillis()
                 )
                 prefs.edit {
-                    putLong("CURRENT_SESSION_START", sessionId)
-                    putBoolean("IS_RECORDING", true)
-                    putBoolean("FORCE_NEW_SESSION", false)
+                    putLong(PrefKeys.CURRENT_SESSION_START, sessionId)
+                    putBoolean(PrefKeys.IS_RECORDING, true)
+                    putBoolean(PrefKeys.FORCE_NEW_SESSION, false)
                 }
                 triggerImmediateNotificationUpdate(true)
                 startLoggingLoop()
             }
             ACTION_STOP_RECORDING -> {
                 prefs.edit {
-                    putBoolean("IS_RECORDING", false)
-                    putBoolean("FORCE_NEW_SESSION", true)
+                    putBoolean(PrefKeys.IS_RECORDING, false)
+                    putBoolean(PrefKeys.FORCE_NEW_SESSION, true)
                 }
                 triggerImmediateNotificationUpdate(false)
                 startLoggingLoop()
             }
             ACTION_EXIT_APP -> {
                 prefs.edit {
-                    putBoolean("IS_RECORDING", false)
-                    putBoolean("FORCE_NEW_SESSION", true)
-                    putBoolean("USER_EXITED", true)
+                    putBoolean(PrefKeys.IS_RECORDING, false)
+                    putBoolean(PrefKeys.FORCE_NEW_SESSION, true)
+                    putBoolean(PrefKeys.USER_EXITED, true)
                 }
                 stopSelf()
                 android.os.Process.killProcess(android.os.Process.myPid())
@@ -165,12 +166,12 @@ class ChargeLoggingService : Service() {
         val initializationJob = sessionInitializationJob
         loggingJob = scope.launch {
             initializationJob.join()
-            val db = ChargeDatabase.getDatabase(this@ChargeLoggingService)
-            val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+            val repo = ChargeRepository.getInstance(this@ChargeLoggingService)
+            val prefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
             while (true) {
                 try {
-                    val isRecording = prefs.getBoolean("IS_RECORDING", false)
-                    val interval = prefs.getInt("SAMPLING_INTERVAL_SECONDS", 5)
+                    val isRecording = prefs.getBoolean(PrefKeys.IS_RECORDING, false)
+                    val interval = prefs.getInt(PrefKeys.SAMPLING_INTERVAL_SECONDS, 5)
                     val powerManager = getSystemService(POWER_SERVICE) as PowerManager
                     val isInteractive = powerManager.isInteractive
                     // If system Battery Saver is active, double the interval to save extra battery
@@ -244,7 +245,7 @@ class ChargeLoggingService : Service() {
                                 }
                             }
                             
-                            val sessionId = prefs.getLong("CURRENT_SESSION_START", System.currentTimeMillis())
+                            val sessionId = prefs.getLong(PrefKeys.CURRENT_SESSION_START, System.currentTimeMillis())
 
                             val record = ChargeRecord(
                                 sessionId = sessionId,
@@ -259,18 +260,18 @@ class ChargeLoggingService : Service() {
                                 batteryStatus = batteryStatusValue
                             )
 
-                            db.chargeDao().insert(record)
+                            repo.insert(record)
                             
                             // Throttled notification update: only update if screen is on, or battery level changes, or every 10 samples
-                            val lastNotificationLevel = prefs.getInt("LAST_NOTIFICATION_BATTERY_LEVEL", -1)
-                            val sampleCount = prefs.getInt("BG_SAMPLE_COUNT", 0) + 1
-                            prefs.edit { putInt("BG_SAMPLE_COUNT", sampleCount) }
+                            val lastNotificationLevel = prefs.getInt(PrefKeys.LAST_NOTIFICATION_BATTERY_LEVEL, -1)
+                            val sampleCount = prefs.getInt(PrefKeys.BG_SAMPLE_COUNT, 0) + 1
+                            prefs.edit { putInt(PrefKeys.BG_SAMPLE_COUNT, sampleCount) }
 
                             if (isInteractive || latestBatteryLevel != lastNotificationLevel || sampleCount % 10 == 0) {
                                 updateNotification(avgVoltage, avgCurrent, avgPower, latestBatteryLevel, isRecording = true)
                                 prefs.edit {
                                     putInt(
-                                        "LAST_NOTIFICATION_BATTERY_LEVEL",
+                                        PrefKeys.LAST_NOTIFICATION_BATTERY_LEVEL,
                                         latestBatteryLevel
                                     )
                                 }
@@ -442,30 +443,30 @@ class ChargeLoggingService : Service() {
     }
 
     private fun updateBackgroundPowerStats(prefs: android.content.SharedPreferences, currentPower: Float) {
-        val appInBackground = prefs.getBoolean("APP_IN_BACKGROUND", false)
+        val appInBackground = prefs.getBoolean(PrefKeys.APP_IN_BACKGROUND, false)
         if (appInBackground && currentPower.isFinite() && currentPower != 0f) {
             prefs.edit {
                 if (currentPower > 0) {
                     // Charging power range
-                    val minP = prefs.getFloat("BG_MIN_CHARGE_POWER", Float.MAX_VALUE)
-                    val maxP = prefs.getFloat("BG_MAX_CHARGE_POWER", -Float.MAX_VALUE)
+                    val minP = prefs.getFloat(PrefKeys.BG_MIN_CHARGE_POWER, Float.MAX_VALUE)
+                    val maxP = prefs.getFloat(PrefKeys.BG_MAX_CHARGE_POWER, -Float.MAX_VALUE)
                     val newMinP = if (currentPower < minP) currentPower else minP
                     val newMaxP = if (currentPower > maxP) currentPower else maxP
-                    putFloat("BG_MIN_CHARGE_POWER", newMinP)
-                    putFloat("BG_MAX_CHARGE_POWER", newMaxP)
+                    putFloat(PrefKeys.BG_MIN_CHARGE_POWER, newMinP)
+                    putFloat(PrefKeys.BG_MAX_CHARGE_POWER, newMaxP)
                 } else {
                     // Keep signed net power and convert any old unsigned range in place.
-                    val storedMinP = prefs.getFloat("BG_MIN_DISCHARGE_POWER", Float.MAX_VALUE)
-                    val storedMaxP = prefs.getFloat("BG_MAX_DISCHARGE_POWER", -Float.MAX_VALUE)
+                    val storedMinP = prefs.getFloat(PrefKeys.BG_MIN_DISCHARGE_POWER, Float.MAX_VALUE)
+                    val storedMaxP = prefs.getFloat(PrefKeys.BG_MAX_DISCHARGE_POWER, -Float.MAX_VALUE)
                     val minP = if (storedMinP >= 0f && storedMaxP >= 0f) -storedMaxP else storedMinP
                     val maxP = if (storedMinP >= 0f && storedMaxP >= 0f) -storedMinP else storedMaxP
                     val newMinP = if (currentPower < minP) currentPower else minP
                     val newMaxP = if (currentPower > maxP) currentPower else maxP
-                    putFloat("BG_MIN_DISCHARGE_POWER", newMinP)
-                    putFloat("BG_MAX_DISCHARGE_POWER", newMaxP)
+                    putFloat(PrefKeys.BG_MIN_DISCHARGE_POWER, newMinP)
+                    putFloat(PrefKeys.BG_MAX_DISCHARGE_POWER, newMaxP)
                 }
 
-                putBoolean("BG_STATS_RECORDED", true)
+                putBoolean(PrefKeys.BG_STATS_RECORDED, true)
             }
         }
     }

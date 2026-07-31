@@ -7,12 +7,10 @@ import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
-import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.transition.ChangeBounds
@@ -20,7 +18,6 @@ import android.transition.Fade
 import android.transition.TransitionManager
 import android.transition.TransitionSet
 import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.PathInterpolator
@@ -39,9 +36,9 @@ import androidx.core.net.toUri
 import androidx.core.os.LocaleListCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isGone
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.github.mikephil.charting.components.Legend
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.Entry
@@ -50,34 +47,30 @@ import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import per.jau.chargelog.data.ChargeDatabase
+import per.jau.chargelog.constants.PrefKeys
 import per.jau.chargelog.data.ChargeRecord
+import per.jau.chargelog.data.ChargeRepository
 import per.jau.chargelog.service.ChargeLoggingService
+import per.jau.chargelog.ui.RawDataDialogHelper
 import per.jau.chargelog.utils.BatteryFlow
 import per.jau.chargelog.utils.BatteryUtils
 import per.jau.chargelog.utils.FastChargeLimit
 import per.jau.chargelog.utils.HistoryRetention
+import per.jau.chargelog.utils.PowerLimitFormatter
+import per.jau.chargelog.utils.SessionStatsCalculator
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.time.Duration.Companion.milliseconds
-import androidx.core.view.isVisible
-import androidx.core.view.isGone
 
 
-private fun batteryStatusLabel(context: Context, status: Int): String = when (status) {
-    BatteryManager.BATTERY_STATUS_CHARGING -> context.getString(R.string.battery_status_charging)
-    BatteryManager.BATTERY_STATUS_FULL -> context.getString(R.string.battery_status_full)
-    BatteryManager.BATTERY_STATUS_NOT_CHARGING -> context.getString(R.string.battery_status_not_charging)
-    BatteryManager.BATTERY_STATUS_DISCHARGING -> context.getString(R.string.battery_status_discharging)
-    else -> context.getString(R.string.battery_status_unknown)
-}
 class MainActivity : AppCompatActivity() {
 
     private val exportCsvLauncher = registerForActivityResult(
@@ -136,14 +129,14 @@ class MainActivity : AppCompatActivity() {
     private var chartBaseTime: Long = 0L
 
     private val prefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == "CURRENT_SESSION_START") {
+        if (key == PrefKeys.CURRENT_SESSION_START) {
             val historyStartTime = intent.getLongExtra("HISTORY_START_TIME", -1L)
             val historyEndTime = intent.getLongExtra("HISTORY_END_TIME", -1L)
             if (historyStartTime == -1L || historyEndTime == -1L) {
                 observeData()
             }
-        } else if (key == "IS_RECORDING") {
-            val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
+        } else if (key == PrefKeys.IS_RECORDING) {
+            val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
             if (historySessionId == -1L) {
                 if (::lineChart.isInitialized) {
                     val highlight = lineChart.highlighted?.firstOrNull()
@@ -198,9 +191,9 @@ class MainActivity : AppCompatActivity() {
         colorSelected = ContextCompat.getColor(this, R.color.dashboard_value_selected)
         colorSummary = ContextCompat.getColor(this, R.color.dashboard_value_summary)
 
-        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+        val prefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
         prefs.edit {
-            putBoolean("USER_EXITED", true)
+            putBoolean(PrefKeys.USER_EXITED, true)
         }
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         lifecycleScope.launch(Dispatchers.IO) {
@@ -236,7 +229,7 @@ class MainActivity : AppCompatActivity() {
         val tvFooter = findViewById<TextView>(R.id.tvFooter)
         tvFooter.text = getString(R.string.footer_version_build, BuildConfig.VERSION_NAME, BuildConfig.BUILD_DATE)
         tvFooter.setOnClickListener {
-            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            MaterialAlertDialogBuilder(this)
                 .setTitle(getString(R.string.github_dialog_title))
                 .setMessage("https://github.com/huafang2/ChargeLog")
                 .setPositiveButton(getString(R.string.github_dialog_open)) { _, _ ->
@@ -257,22 +250,22 @@ class MainActivity : AppCompatActivity() {
         layoutSettingsRow = findViewById(R.id.layoutSettingsRow)
         tvHistoryRetentionValue = findViewById(R.id.tvHistoryRetentionValue)
         switchBgReport = findViewById(R.id.switchBgReport)
-        switchBgReport.isChecked = prefs.getBoolean("ENABLE_BG_REPORT", true)
+        switchBgReport.isChecked = prefs.getBoolean(PrefKeys.ENABLE_BG_REPORT, true)
         switchBgReport.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit { putBoolean("ENABLE_BG_REPORT", isChecked) }
+            prefs.edit { putBoolean(PrefKeys.ENABLE_BG_REPORT, isChecked) }
         }
 
 
         val tvIntervalLabel = findViewById<TextView>(R.id.tvIntervalLabel)
         val sbInterval = findViewById<android.widget.SeekBar>(R.id.sbInterval)
-        val currentInterval = prefs.getInt("SAMPLING_INTERVAL_SECONDS", 5)
+        val currentInterval = prefs.getInt(PrefKeys.SAMPLING_INTERVAL_SECONDS, 5)
         sbInterval.progress = currentInterval - 1
         tvIntervalLabel.text = getString(R.string.sampling_interval, currentInterval)
         sbInterval.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
                 val sec = progress + 1
                 tvIntervalLabel.text = getString(R.string.sampling_interval, sec)
-                prefs.edit { putInt("SAMPLING_INTERVAL_SECONDS", sec) }
+                prefs.edit { putInt(PrefKeys.SAMPLING_INTERVAL_SECONDS, sec) }
             }
             override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
@@ -315,18 +308,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnExit.setOnClickListener {
-            getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+            getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
                 .edit {
-                    putBoolean("IS_RECORDING", false)
-                        .putBoolean("FORCE_NEW_SESSION", true)
-                        .putBoolean("USER_EXITED", true)
+                    putBoolean(PrefKeys.IS_RECORDING, false)
+                        .putBoolean(PrefKeys.FORCE_NEW_SESSION, true)
+                        .putBoolean(PrefKeys.USER_EXITED, true)
                 }
             stopService(Intent(this, ChargeLoggingService::class.java))
             finishAffinity()
         }
 
         btnHistory.setOnClickListener {
-            val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
+            val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
             if (historySessionId != -1L) {
                 finish()
             } else {
@@ -337,32 +330,32 @@ class MainActivity : AppCompatActivity() {
 
         btnClear.setOnClickListener {
             val isRecording = isRecording()
-            val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-            val sessionStart = prefs.getLong("CURRENT_SESSION_START", 0L)
+            val prefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
+            val sessionStart = prefs.getLong(PrefKeys.CURRENT_SESSION_START, 0L)
             if (isRecording) {
-                com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.dialog_tip_title)
                     .setMessage(R.string.dialog_clear_confirm_msg)
                     .setPositiveButton(R.string.confirm_clear) { _, _ ->
                         lifecycleScope.launch {
                             // 1. Stop recording
                             prefs.edit {
-                                putBoolean("IS_RECORDING", false)
+                                putBoolean(PrefKeys.IS_RECORDING, false)
                             }
                             tvStatus.text = getString(R.string.stopped)
                             updateButtonStates()
                             
                             // 2. Discard current session data by deleting records matching sessionId
-                            val dao = ChargeDatabase.getDatabase(this@MainActivity).chargeDao()
+                            val repo = ChargeRepository.getInstance(this@MainActivity)
                             if (sessionStart > 0L) {
-                                dao.deleteRecordsBySession(sessionStart)
+                                repo.deleteRecordsBySession(sessionStart)
                             }
                             
                             // 3. Reset CURRENT_SESSION_START to now
                             val now = System.currentTimeMillis()
                             prefs.edit {
-                                putLong("CURRENT_SESSION_START", now)
-                                putBoolean("FORCE_NEW_SESSION", true)
+                                putLong(PrefKeys.CURRENT_SESSION_START, now)
+                                putBoolean(PrefKeys.FORCE_NEW_SESSION, true)
                             }
                         }
                     }
@@ -372,76 +365,15 @@ class MainActivity : AppCompatActivity() {
                 // Not recording: clear screen immediately without dialog, no database deletion
                 val now = System.currentTimeMillis()
                 prefs.edit {
-                    putLong("CURRENT_SESSION_START", now)
-                    putBoolean("FORCE_NEW_SESSION", true)
+                    putLong(PrefKeys.CURRENT_SESSION_START, now)
+                    putBoolean(PrefKeys.FORCE_NEW_SESSION, true)
                 }
             }
         }
 
         btnShowData.setOnClickListener {
-            val recordsSnapshot = currentRecords.toList()
-            if (recordsSnapshot.isEmpty()) {
-                android.widget.Toast.makeText(this, "暂无数据", android.widget.Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            try {
-                val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_raw_data, null)
-                val rvRawData = dialogView.findViewById<RecyclerView>(R.id.rvRawData)
-                rvRawData.layoutManager = LinearLayoutManager(this)
-                rvRawData.adapter = RawDataAdapter(recordsSnapshot)
-                
-                val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
-                    .setView(dialogView)
-                    .create()
-                
-                val tvRawSummary = dialogView.findViewById<TextView>(R.id.tvRawSummary)
-                val chargePoints = recordsSnapshot.filter { it.power > 0 }
-                val dischargePoints = recordsSnapshot.filter { it.power < 0 }
-
-                val summaryBuilder = StringBuilder()
-
-                if (chargePoints.isNotEmpty()) {
-                    val minCP = String.format(Locale.getDefault(), "%.2f", chargePoints.minOf { it.power })
-                    val maxCP = String.format(Locale.getDefault(), "%.2f", chargePoints.maxOf { it.power })
-                    val minCC = String.format(Locale.getDefault(), "%.2f", chargePoints.minOf { it.current })
-                    val maxCC = String.format(Locale.getDefault(), "%.2f", chargePoints.maxOf { it.current })
-                    summaryBuilder.append(getString(R.string.charge_power_summary, minCP, maxCP))
-                    summaryBuilder.append(getString(R.string.charge_current_summary, minCC, maxCC))
-                }
-
-                if (dischargePoints.isNotEmpty()) {
-                    val minDP = String.format(Locale.getDefault(), "%.2f", dischargePoints.minOf { it.power })
-                    val maxDP = String.format(Locale.getDefault(), "%.2f", dischargePoints.maxOf { it.power })
-                    val minDC = String.format(Locale.getDefault(), "%.2f", dischargePoints.minOf { it.current })
-                    val maxDC = String.format(Locale.getDefault(), "%.2f", dischargePoints.maxOf { it.current })
-                    summaryBuilder.append(getString(R.string.discharge_power_summary, minDP, maxDP))
-                    summaryBuilder.append(getString(R.string.discharge_current_summary, minDC, maxDC))
-                }
-
-                if (recordsSnapshot.isNotEmpty()) {
-                    val startBat = recordsSnapshot.first().batteryLevel
-                    val endBat = recordsSnapshot.last().batteryLevel
-                    val batChange = endBat - startBat
-                    val changeSign = if (batChange >= 0) "+$batChange%" else "$batChange%"
-                    summaryBuilder.append(getString(R.string.battery_change, startBat, endBat, changeSign))
-                }
-
-                tvRawSummary.text = summaryBuilder.toString()
-                tvRawSummary.visibility = View.VISIBLE
-
-                dialogView.findViewById<View>(R.id.btnExportCSV)?.setOnClickListener {
-                    dialog.dismiss()
-                    val fileName = "ChargeLog_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.csv"
-                    exportCsvLauncher.launch(fileName)
-                }
-
-                dialogView.findViewById<View>(R.id.btnCloseDialog)?.setOnClickListener {
-                    dialog.dismiss()
-                }
-                dialog.show()
-            } catch (e: Exception) {
-                android.util.Log.e("MainActivity", "Error showing raw data dialog", e)
-                android.widget.Toast.makeText(this, "打开数据失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+            RawDataDialogHelper.show(this, currentRecords) { fileName ->
+                exportCsvLauncher.launch(fileName)
             }
         }
 
@@ -457,7 +389,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleIntent(intent: Intent) {
-        val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
+        val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
         
         if (historySessionId != -1L) {
             supportActionBar?.setDisplayHomeAsUpEnabled(true)
@@ -474,7 +406,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateButtonStates() {
-        val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
+        val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
         if (historySessionId != -1L) {
             setViewsVisibleAnimated(
                 btnStart to false,
@@ -681,7 +613,7 @@ class MainActivity : AppCompatActivity() {
                 lastHighlightedX = null
                 menuDeleteSegment?.isVisible = false
                 if (currentRecords.isNotEmpty()) {
-                    val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
+                    val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
                     if (historySessionId != -1L) {
                         updateDashboardWithExtremeValues()
                     } else {
@@ -752,18 +684,19 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    @SuppressLint("SetTextI18n")
     private fun observeData(sessionId: Long = -1L) {
         observeJob?.cancel() // Cancel any ongoing observation
-        val dao = ChargeDatabase.getDatabase(this).chargeDao()
+        val repo = ChargeRepository.getInstance(this)
         
         observeJob = lifecycleScope.launch {
             val targetSessionId = if (sessionId != -1L) {
                 sessionId
             } else {
-                val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-                prefs.getLong("CURRENT_SESSION_START", System.currentTimeMillis())
+                val prefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
+                prefs.getLong(PrefKeys.CURRENT_SESSION_START, System.currentTimeMillis())
             }
-            val flow = dao.getRecordsBySession(targetSessionId)
+            val flow = repo.getRecordsBySession(targetSessionId)
 
             flow.collectLatest { records ->
                 if (records.isEmpty()) {
@@ -774,7 +707,7 @@ class MainActivity : AppCompatActivity() {
                         sbChartScrubber to false
                     )
                     menuDeleteSegment?.isVisible = false
-                    val latest = dao.getLatestRecord()
+                    val latest = repo.getLatestRecord()
                     if (latest != null) {
                         chartBaseTime = latest.timestamp
                         updateDashboardText(latest, false)
@@ -850,7 +783,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateStatusTitle(isSelected: Boolean, record: ChargeRecord? = null) {
-        val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
+        val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
         val baseTitle = if (historySessionId != -1L) {
             getString(R.string.viewing_history)
         } else {
@@ -1169,26 +1102,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateDashboardWithExtremeValues() {
-        if (currentRecords.isEmpty()) return
-        
-        val voltages = currentRecords.map { it.voltage }
-        val currents = currentRecords.map { it.current }
-        val powers = currentRecords.map { it.power }
-        val batteryLevels = currentRecords.map { it.batteryLevel }
-        
-        val minV = voltages.minOrNull() ?: 0f
-        val maxV = voltages.maxOrNull() ?: 0f
-        
-        val minC = currents.minOrNull() ?: 0f
-        val maxC = currents.maxOrNull() ?: 0f
-        
-        val minP = powers.minOrNull() ?: 0f
-        val maxP = powers.maxOrNull() ?: 0f
-        
-        val startBat = batteryLevels.firstOrNull() ?: 0
-        val endBat = batteryLevels.lastOrNull() ?: 0
-        val batChange = endBat - startBat
-        val changeSign = if (batChange >= 0) "+$batChange%" else "$batChange%"
+        val stats = SessionStatsCalculator.calculate(currentRecords) ?: return
+        val changeSign = if (stats.batteryChange >= 0) "+${stats.batteryChange}%" else "${stats.batteryChange}%"
         
         resetDashboardTextSize()
         val summaryLabelSizeSp = 17f
@@ -1198,10 +1113,10 @@ class MainActivity : AppCompatActivity() {
         tvCurrentProtocol.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, summaryLabelSizeSp)
         updateStatusTitle(false)
 
-        val valV = String.format(Locale.getDefault(), "%.2f～%.2f", minV, maxV)
-        val valC = String.format(Locale.getDefault(), "%.2f～%.2f", minC, maxC)
-        val valP = String.format(Locale.getDefault(), "%.2f～%.2f", minP, maxP)
-        val valB = "$startBat→$endBat($changeSign)"
+        val valV = String.format(Locale.getDefault(), "%.2f～%.2f", stats.minVoltage, stats.maxVoltage)
+        val valC = String.format(Locale.getDefault(), "%.2f～%.2f", stats.minCurrent, stats.maxCurrent)
+        val valP = String.format(Locale.getDefault(), "%.2f～%.2f", stats.minPower, stats.maxPower)
+        val valB = "${stats.startBattery}→${stats.endBattery}($changeSign)"
 
         tvCurrentVoltage.text = formatExtremeValueText(getString(R.string.history_summary_voltage_label), valV, 10f)
         tvCurrentCurrent.text = formatExtremeValueText(getString(R.string.history_summary_current_label), valC, 10f)
@@ -1398,35 +1313,26 @@ class MainActivity : AppCompatActivity() {
         val batChange = endBat - startBat
         val changeSign = if (batChange >= 0) "+$batChange%" else "$batChange%"
 
-        var totalChargedmAh = 0.0
-        var totalChargedWh = 0.0
-        for (i in 1..endIndex) {
-            val rPrev = currentRecords[i - 1]
-            val rCurr = currentRecords[i]
-            val dtHours = (rCurr.timestamp - rPrev.timestamp) / 3600000.0
-            if (dtHours > 0 && dtHours < 1.0) {
-                val avgCurrentA = (rPrev.current + rCurr.current) / 2.0
-                val avgPowerW = (rPrev.power + rCurr.power) / 2.0
-                if (avgCurrentA > 0) {
-                    totalChargedmAh += avgCurrentA * 1000.0 * dtHours
-                }
-                if (avgPowerW > 0) {
-                    totalChargedWh += avgPowerW * dtHours
-                }
-            }
-        }
+        val energy = SessionStatsCalculator.calculateEnergy(currentRecords.take(endIndex + 1))
+        val netMah = energy.netMah
+        val netWh = energy.netWh
 
-        val mahWhStr = if (totalChargedmAh > 0.5) {
-            val whFormatted = String.format(Locale.getDefault(), "%.1f", totalChargedWh)
-            getString(R.string.power_charged_mah_wh, totalChargedmAh.toInt(), whFormatted)
+        val isSelected = targetIndex in currentRecords.indices && targetIndex < currentRecords.size - 1
+        val isDischarging = netMah < -0.5 || (netMah in -0.5..0.5 && batChange < 0)
+
+        val mahWhStr = if (abs(netMah) > 0.5) {
+            val absMah = abs(netMah).toInt()
+            val absWhFormatted = String.format(Locale.getDefault(), "%.1f", abs(netWh))
+            getString(R.string.power_charged_mah_wh, absMah, absWhFormatted)
         } else {
             ""
         }
 
-        val text = if (targetIndex in currentRecords.indices && targetIndex < currentRecords.size - 1) {
-            getString(R.string.power_charged_summary_selected, changeSign, startBat, endBat, mahWhStr)
-        } else {
-            getString(R.string.power_charged_summary_total, changeSign, startBat, endBat, mahWhStr)
+        val text = when {
+            isDischarging && isSelected -> getString(R.string.power_discharged_summary_selected, changeSign, startBat, endBat, mahWhStr)
+            isDischarging -> getString(R.string.power_discharged_summary_total, changeSign, startBat, endBat, mahWhStr)
+            isSelected -> getString(R.string.power_charged_summary_selected, changeSign, startBat, endBat, mahWhStr)
+            else -> getString(R.string.power_charged_summary_total, changeSign, startBat, endBat, mahWhStr)
         }
 
         tvPowerSummaryText.text = text
@@ -1437,36 +1343,36 @@ class MainActivity : AppCompatActivity() {
         startLiveTextUpdateLoop()
 
         // Check and report background stats when returning to the foreground
-        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-        val userExited = prefs.getBoolean("USER_EXITED", false)
+        val prefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
+        val userExited = prefs.getBoolean(PrefKeys.USER_EXITED, false)
         if (userExited) {
             prefs.edit {
-                putBoolean("USER_EXITED", false)
-                    .putBoolean("APP_IN_BACKGROUND", false)
-                    .putBoolean("BG_STATS_RECORDED", false)
+                putBoolean(PrefKeys.USER_EXITED, false)
+                    .putBoolean(PrefKeys.APP_IN_BACKGROUND, false)
+                    .putBoolean(PrefKeys.BG_STATS_RECORDED, false)
             }
             return
         }
 
-        val enableBgReport = prefs.getBoolean("ENABLE_BG_REPORT", true)
-        val appInBackground = prefs.getBoolean("APP_IN_BACKGROUND", false)
-        val bgStatsRecorded = prefs.getBoolean("BG_STATS_RECORDED", false)
+        val enableBgReport = prefs.getBoolean(PrefKeys.ENABLE_BG_REPORT, true)
+        val appInBackground = prefs.getBoolean(PrefKeys.APP_IN_BACKGROUND, false)
+        val bgStatsRecorded = prefs.getBoolean(PrefKeys.BG_STATS_RECORDED, false)
         
         if (enableBgReport && appInBackground && bgStatsRecorded) {
             // Reset flags immediately
             prefs.edit {
-                putBoolean("APP_IN_BACKGROUND", false)
-                    .putBoolean("BG_STATS_RECORDED", false)
+                putBoolean(PrefKeys.APP_IN_BACKGROUND, false)
+                    .putBoolean(PrefKeys.BG_STATS_RECORDED, false)
             }
             
-            val startTime = prefs.getLong("BACKGROUND_START_TIME", 0L)
-            val startBattery = prefs.getInt("BACKGROUND_START_BATTERY", -1)
+            val startTime = prefs.getLong(PrefKeys.BACKGROUND_START_TIME, 0L)
+            val startBattery = prefs.getInt(PrefKeys.BACKGROUND_START_BATTERY, -1)
             
             // Power ranges (charging & discharging)
-            val minCP = prefs.getFloat("BG_MIN_CHARGE_POWER", Float.MAX_VALUE)
-            val maxCP = prefs.getFloat("BG_MAX_CHARGE_POWER", -Float.MAX_VALUE)
-            val storedMinDP = prefs.getFloat("BG_MIN_DISCHARGE_POWER", Float.MAX_VALUE)
-            val storedMaxDP = prefs.getFloat("BG_MAX_DISCHARGE_POWER", -Float.MAX_VALUE)
+            val minCP = prefs.getFloat(PrefKeys.BG_MIN_CHARGE_POWER, Float.MAX_VALUE)
+            val maxCP = prefs.getFloat(PrefKeys.BG_MAX_CHARGE_POWER, -Float.MAX_VALUE)
+            val storedMinDP = prefs.getFloat(PrefKeys.BG_MIN_DISCHARGE_POWER, Float.MAX_VALUE)
+            val storedMaxDP = prefs.getFloat(PrefKeys.BG_MAX_DISCHARGE_POWER, -Float.MAX_VALUE)
             val minDP = if (storedMinDP >= 0f && storedMaxDP >= 0f) -storedMaxDP else storedMinDP
             val maxDP = if (storedMinDP >= 0f && storedMaxDP >= 0f) -storedMinDP else storedMaxDP
             
@@ -1497,8 +1403,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             // Just clear flags if not showing report
             prefs.edit {
-                putBoolean("APP_IN_BACKGROUND", false)
-                    .putBoolean("BG_STATS_RECORDED", false)
+                putBoolean(PrefKeys.APP_IN_BACKGROUND, false)
+                    .putBoolean(PrefKeys.BG_STATS_RECORDED, false)
             }
         }
     }
@@ -1506,18 +1412,18 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         // Save initial background state when activity goes to background (including screen lock)
-        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+        val prefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
         val currentBattery = BatteryUtils.getBatteryLevel(this)
         prefs.edit {
-            putBoolean("APP_IN_BACKGROUND", true)
-                .putBoolean("BG_STATS_RECORDED", false)
-                .putLong("BACKGROUND_START_TIME", System.currentTimeMillis())
-                .putInt("BACKGROUND_START_BATTERY", currentBattery)
+            putBoolean(PrefKeys.APP_IN_BACKGROUND, true)
+                .putBoolean(PrefKeys.BG_STATS_RECORDED, false)
+                .putLong(PrefKeys.BACKGROUND_START_TIME, System.currentTimeMillis())
+                .putInt(PrefKeys.BACKGROUND_START_BATTERY, currentBattery)
                 // Power
-                .putFloat("BG_MIN_CHARGE_POWER", Float.MAX_VALUE)
-                .putFloat("BG_MAX_CHARGE_POWER", -Float.MAX_VALUE)
-                .putFloat("BG_MIN_DISCHARGE_POWER", Float.MAX_VALUE)
-                .putFloat("BG_MAX_DISCHARGE_POWER", -Float.MAX_VALUE)
+                .putFloat(PrefKeys.BG_MIN_CHARGE_POWER, Float.MAX_VALUE)
+                .putFloat(PrefKeys.BG_MAX_CHARGE_POWER, -Float.MAX_VALUE)
+                .putFloat(PrefKeys.BG_MIN_DISCHARGE_POWER, Float.MAX_VALUE)
+                .putFloat(PrefKeys.BG_MAX_DISCHARGE_POWER, -Float.MAX_VALUE)
         }
     }
 
@@ -1556,7 +1462,7 @@ class MainActivity : AppCompatActivity() {
             }
         }.toString()
 
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle(getString(R.string.bg_stats_title))
             .setMessage(message)
             .setPositiveButton(getString(R.string.confirm), null)
@@ -1569,15 +1475,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isRecording(): Boolean {
-        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-        return prefs.getBoolean("IS_RECORDING", false)
+        val prefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
+        return prefs.getBoolean(PrefKeys.IS_RECORDING, false)
     }
 
     private fun startLiveTextUpdateLoop() {
         liveTextUpdateJob?.cancel()
         liveTextUpdateJob = lifecycleScope.launch {
             while (true) {
-                val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
+                val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
                 if (historySessionId == -1L && !isRecording()) {
                     // Update only if no active chart selection
                     if (lineChart.highlighted.isNullOrEmpty()) {
@@ -1625,15 +1531,7 @@ class MainActivity : AppCompatActivity() {
                                 else -> "未知"
                             }
                             val batteryStatusStr = batteryStatusLabel(this@MainActivity, record.batteryStatus)
-                            val limitStr = if (record.maxVoltage != null && record.maxCurrent != null && record.maxVoltage > 0 && record.maxCurrent > 0) {
-                                val maxPower = record.maxVoltage * record.maxCurrent
-                                val vStr = if (record.maxVoltage % 1 == 0f) String.format(Locale.US, "%.0f", record.maxVoltage) else String.format(Locale.US, "%.1f", record.maxVoltage)
-                                val cStr = if (record.maxCurrent % 1 == 0f) String.format(Locale.US, "%.0f", record.maxCurrent) else String.format(Locale.US, "%.1f", record.maxCurrent)
-                                val pStr = if (maxPower % 1 == 0f) String.format(Locale.US, "%.0f", maxPower) else String.format(Locale.US, "%.1f", maxPower)
-                                "${pStr}W(${vStr}V/${cStr}A)"
-                            } else {
-                                ""
-                            }
+                            val limitStr = PowerLimitFormatter.formatLimitPower(record.maxVoltage, record.maxCurrent)
                             writer.write(String.format(
                                 Locale.getDefault(),
                                 "%s,%.2f,%.2f,%.2f,%d,%s,%s,%s\n",
@@ -1662,7 +1560,7 @@ class MainActivity : AppCompatActivity() {
         menuDeleteSegment?.isVisible = lineChart.highlighted?.isNotEmpty() == true
         
         // Hide theme/language options if we are viewing historical details
-        val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
+        val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
         val menuTheme = menu.findItem(R.id.menu_theme)
         val menuLanguage = menu.findItem(R.id.menu_language)
         if (historySessionId != -1L) {
@@ -1672,8 +1570,8 @@ class MainActivity : AppCompatActivity() {
             menuTheme?.isVisible = true
             menuLanguage?.isVisible = true
             // Set correct icon for current theme
-            val themePrefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-            val currentTheme = themePrefs.getInt("THEME_MODE", 0)
+            val themePrefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
+            val currentTheme = themePrefs.getInt(PrefKeys.THEME_MODE, 0)
             val iconRes = when (currentTheme) {
                 1 -> R.drawable.ic_theme_light
                 2 -> R.drawable.ic_theme_dark
@@ -1685,7 +1583,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
-        val historySessionId = intent.getLongExtra("HISTORY_SESSION_ID", -1L)
+        val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
         if (item.itemId == android.R.id.home) {
             if (historySessionId != -1L) {
                 finish()
@@ -1706,21 +1604,21 @@ class MainActivity : AppCompatActivity() {
                 getString(R.string.crop_delete_after),
                 getString(R.string.crop_delete_single)
             )
-            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            MaterialAlertDialogBuilder(this)
                 .setTitle(getString(R.string.crop_data_title, timeStr))
                 .setItems(options) { _, which ->
                     lifecycleScope.launch {
-                        val dao = ChargeDatabase.getDatabase(this@MainActivity).chargeDao()
+                        val repo = ChargeRepository.getInstance(this@MainActivity)
                         val sessionStart = record.sessionId
                         when (which) {
                             0 -> { // Delete before
-                                dao.deleteRecordsBefore(sessionStart, record.timestamp)
+                                repo.deleteRecordsBefore(sessionStart, record.timestamp)
                             }
                             1 -> { // Delete after
-                                dao.deleteRecordsAfter(sessionStart, record.timestamp)
+                                repo.deleteRecordsAfter(sessionStart, record.timestamp)
                             }
                             2 -> { // Delete single
-                                dao.deleteSingleRecord(sessionStart, record.timestamp)
+                                repo.deleteSingleRecord(sessionStart, record.timestamp)
                             }
                         }
                         lineChart.highlightValue(null, true)
@@ -1740,8 +1638,8 @@ class MainActivity : AppCompatActivity() {
             return true
         }
         
-        val themePrefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-        val activeTheme = themePrefs.getInt("THEME_MODE", 0)
+        val themePrefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
+        val activeTheme = themePrefs.getInt(PrefKeys.THEME_MODE, 0)
         var newTheme: Int? = null
         when (item.itemId) {
             R.id.menu_theme_auto -> newTheme = 0
@@ -1750,7 +1648,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         if (newTheme != null && newTheme != activeTheme) {
-            themePrefs.edit { putInt("THEME_MODE", newTheme) }
+            themePrefs.edit { putInt(PrefKeys.THEME_MODE, newTheme) }
             val newNightMode = when (newTheme) {
                 1 -> AppCompatDelegate.MODE_NIGHT_NO
                 2 -> AppCompatDelegate.MODE_NIGHT_YES
@@ -1778,64 +1676,11 @@ class MainActivity : AppCompatActivity() {
         maxChargingLimitAnimator?.removeAllListeners()
         maxChargingLimitAnimator?.cancel()
         maxChargingLimitAnimator = null
-        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
+        val prefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
         prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
         if (isFinishing) {
-            prefs.edit { putBoolean("USER_EXITED", true) }
+            prefs.edit { putBoolean(PrefKeys.USER_EXITED, true) }
         }
         super.onDestroy()
-    }
-}
-
-class RawDataAdapter(private val records: List<ChargeRecord>) : RecyclerView.Adapter<RawDataAdapter.ViewHolder>() {
-    private val format = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_raw_data_row, parent, false)
-        return ViewHolder(view)
-    }
-
-    @SuppressLint("SetTextI18n")
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        try {
-            val record = records[position]
-            holder.tvRawTime.text = format.format(Date(record.timestamp))
-            holder.tvRawVoltage.text = String.format(Locale.getDefault(), "%.2f", record.voltage)
-            holder.tvRawCurrent.text = String.format(Locale.getDefault(), "%.2f", record.current)
-            holder.tvRawPower.text = String.format(Locale.getDefault(), "%.2f", record.power)
-            holder.tvRawBattery.text = record.batteryLevel.toString()
-            holder.tvRawBatteryStatus.text = batteryStatusLabel(holder.itemView.context, record.batteryStatus)
-            holder.tvRawScreenState.text = when (record.screenState) {
-                0 -> "锁屏"
-                1 -> "亮屏"
-                else -> "未知"
-            }
-            val maxV = record.maxVoltage
-            val maxC = record.maxCurrent
-            if (maxV != null && maxC != null && maxV > 0 && maxC > 0) {
-                val maxPower = maxV * maxC
-                val vStr = if (maxV % 1 == 0f) String.format(Locale.US, "%.0f", maxV) else String.format(Locale.US, "%.1f", maxV)
-                val cStr = if (maxC % 1 == 0f) String.format(Locale.US, "%.0f", maxC) else String.format(Locale.US, "%.1f", maxC)
-                val pStr = if (maxPower % 1 == 0f) String.format(Locale.US, "%.0f", maxPower) else String.format(Locale.US, "%.1f", maxPower)
-                holder.tvRawMaxPower.text = "${pStr}W(${vStr}V/${cStr}A)"
-            } else {
-                holder.tvRawMaxPower.text = ""
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("RawDataAdapter", "Error binding raw data row", e)
-        }
-    }
-
-    override fun getItemCount() = records.size
-
-    class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val tvRawTime: TextView = view.findViewById(R.id.tvRawTime)
-        val tvRawVoltage: TextView = view.findViewById(R.id.tvRawVoltage)
-        val tvRawCurrent: TextView = view.findViewById(R.id.tvRawCurrent)
-        val tvRawPower: TextView = view.findViewById(R.id.tvRawPower)
-        val tvRawBattery: TextView = view.findViewById(R.id.tvRawBattery)
-        val tvRawBatteryStatus: TextView = view.findViewById(R.id.tvRawBatteryStatus)
-        val tvRawMaxPower: TextView = view.findViewById(R.id.tvRawMaxPower)
-        val tvRawScreenState: TextView = view.findViewById(R.id.tvRawScreenState)
     }
 }

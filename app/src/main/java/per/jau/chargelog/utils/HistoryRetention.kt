@@ -1,7 +1,8 @@
 package per.jau.chargelog.utils
 
 import android.content.Context
-import per.jau.chargelog.data.ChargeDatabase
+import per.jau.chargelog.constants.PrefKeys
+import per.jau.chargelog.data.ChargeRepository
 import java.util.concurrent.TimeUnit
 
 object HistoryRetention {
@@ -10,18 +11,18 @@ object HistoryRetention {
     val OPTIONS_DAYS = intArrayOf(FOREVER, 7, 30, 90, 180, 365)
 
     suspend fun cleanup(context: Context, now: Long = System.currentTimeMillis()): Int {
-        val prefs = context.getSharedPreferences("ChargeLogPrefs", Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(PrefKeys.PREFS_NAME, Context.MODE_PRIVATE)
         val retentionDays = prefs.getInt(PREF_KEY_DAYS, FOREVER)
         if (retentionDays <= FOREVER) return 0
 
         val retentionMs = TimeUnit.DAYS.toMillis(retentionDays.toLong())
         val cutoff = now - retentionMs
-        val activeSessionId = if (prefs.getBoolean("IS_RECORDING", false)) {
-            prefs.getLong("CURRENT_SESSION_START", NO_ACTIVE_SESSION)
+        val activeSessionId = if (prefs.getBoolean(PrefKeys.IS_RECORDING, false)) {
+            prefs.getLong(PrefKeys.CURRENT_SESSION_START, NO_ACTIVE_SESSION)
         } else {
             NO_ACTIVE_SESSION
         }
-        return ChargeDatabase.getDatabase(context).chargeDao()
+        return ChargeRepository.getInstance(context)
             .deleteSessionsEndingBefore(cutoff, activeSessionId)
     }
 

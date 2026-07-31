@@ -1,18 +1,14 @@
 package per.jau.chargelog
 
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.BatteryManager
 import android.os.Bundle
-import android.view.LayoutInflater
+import android.text.InputType
 import android.view.View
-import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -21,30 +17,26 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import per.jau.chargelog.data.ChargeDatabase
+import org.json.JSONArray
+import org.json.JSONObject
+import per.jau.chargelog.constants.PrefKeys
 import per.jau.chargelog.data.ChargeRecord
+import per.jau.chargelog.data.ChargeRepository
 import per.jau.chargelog.utils.BatteryHealthEstimate
 import per.jau.chargelog.utils.BatteryHealthEstimator
 import per.jau.chargelog.utils.BatteryHealthResult
 import per.jau.chargelog.utils.BatteryUtils
+import per.jau.chargelog.utils.SessionStatsCalculator
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.core.content.edit
 
-data class ChargeSession(
-    val startTime: Long,
-    val endTime: Long,
-    val sessionId: Long,
-    val startBattery: Int,
-    val endBattery: Int,
-    val minChargePower: Float?,
-    val maxChargePower: Float?,
-    val minDischargePower: Float?,
-    val maxDischargePower: Float?
-)
 
 class HistoryActivity : AppCompatActivity() {
 
@@ -74,7 +66,7 @@ class HistoryActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_history)
 
-        val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         if (toolbar != null) {
             setSupportActionBar(toolbar)
         }
@@ -97,7 +89,7 @@ class HistoryActivity : AppCompatActivity() {
             insets
         }
 
-        val dao = ChargeDatabase.getDatabase(this).chargeDao()
+        val repo = ChargeRepository.getInstance(this)
 
         rvHistory = findViewById(R.id.rvHistory)
         rvHistory.layoutManager = LinearLayoutManager(this)
@@ -106,12 +98,12 @@ class HistoryActivity : AppCompatActivity() {
         btnEstimateHealth = findViewById(R.id.btnEstimateHealth)
         btnEstimateHealth.setOnClickListener { beginHealthEstimate() }
         btnClearAll.setOnClickListener {
-            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.dialog_clear_all_title)
                 .setMessage(R.string.dialog_clear_all_msg)
                 .setPositiveButton(R.string.clear) { _, _ ->
                     lifecycleScope.launch {
-                        dao.deleteAllRecords()
+                        repo.deleteAllRecords()
                     }
                 }
                 .setNegativeButton(R.string.cancel, null)
@@ -121,17 +113,17 @@ class HistoryActivity : AppCompatActivity() {
         adapter = HistoryAdapter(
             onClick = { session ->
                 val intent = Intent(this, MainActivity::class.java).apply {
-                    putExtra("HISTORY_SESSION_ID", session.sessionId)
+                    putExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, session.sessionId)
                 }
                 startActivity(intent)
             },
             onLongClick = { session ->
-                com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.dialog_delete_session_title)
                     .setMessage(R.string.dialog_delete_session_msg)
                     .setPositiveButton(R.string.menu_delete_segment) { _, _ ->
                         lifecycleScope.launch {
-                            dao.deleteRecordsBySession(session.sessionId)
+                            repo.deleteRecordsBySession(session.sessionId)
                         }
                     }
                     .setNegativeButton(R.string.cancel, null)
@@ -166,9 +158,9 @@ class HistoryActivity : AppCompatActivity() {
 
 
     private fun loadHistory() {
-        val dao = ChargeDatabase.getDatabase(this).chargeDao()
+        val repo = ChargeRepository.getInstance(this)
         lifecycleScope.launch {
-            dao.getAllRecords().collectLatest { records ->
+            repo.getAllRecords().collectLatest { records ->
                 if (records.isEmpty()) {
                     adapter.submitList(emptyList())
                     return@collectLatest
@@ -176,33 +168,20 @@ class HistoryActivity : AppCompatActivity() {
                 
                 // Group by sessionId
                 val grouped = records.groupBy { it.sessionId }
-                val sessions = grouped.map { (sessionId, sessionRecords) ->
+                val sessions = grouped.mapNotNull { (sessionId, sessionRecords) ->
                     val sorted = sessionRecords.sortedBy { it.timestamp }
-                    val start = sorted.first().timestamp
-                    val end = sorted.last().timestamp
-                    val startBat = sorted.first().batteryLevel
-                    val endBat = sorted.last().batteryLevel
-                    
-                    // Split charge and discharge
-                    val chargePoints = sorted.filter { it.power > 0 }
-                    val dischargePoints = sorted.filter { it.power < 0 }
-                    
-                    val minChargePower = if (chargePoints.isNotEmpty()) chargePoints.minOf { it.power } else null
-                    val maxChargePower = if (chargePoints.isNotEmpty()) chargePoints.maxOf { it.power } else null
-                    
-                    val minDischargePower = if (dischargePoints.isNotEmpty()) dischargePoints.minOf { it.power } else null
-                    val maxDischargePower = if (dischargePoints.isNotEmpty()) dischargePoints.maxOf { it.power } else null
+                    val stats = SessionStatsCalculator.calculate(sorted) ?: return@mapNotNull null
                     
                     ChargeSession(
-                        startTime = start,
-                        endTime = end,
+                        startTime = sorted.first().timestamp,
+                        endTime = sorted.last().timestamp,
                         sessionId = sessionId,
-                        startBattery = startBat,
-                        endBattery = endBat,
-                        minChargePower = minChargePower,
-                        maxChargePower = maxChargePower,
-                        minDischargePower = minDischargePower,
-                        maxDischargePower = maxDischargePower
+                        startBattery = stats.startBattery,
+                        endBattery = stats.endBattery,
+                        minChargePower = stats.minChargePower,
+                        maxChargePower = stats.maxChargePower,
+                        minDischargePower = stats.minDischargePower,
+                        maxDischargePower = stats.maxDischargePower
                     )
                 }
                 
@@ -224,12 +203,12 @@ class HistoryActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val records = ChargeDatabase.getDatabase(this@HistoryActivity).chargeDao()
+            val records = ChargeRepository.getInstance(this@HistoryActivity)
                 .getAllRecordsOnce()
                 .filter { it.sessionId in selectedIds }
                 .groupBy { it.sessionId }
                 .values
-                .toList()
+                .map { it.sortedBy(ChargeRecord::timestamp) }
             val systemCapacity = BatteryUtils.getDesignCapacityMah()
             launch(Dispatchers.Main) {
                 showCapacityInputDialog(records, systemCapacity)
@@ -241,12 +220,12 @@ class HistoryActivity : AppCompatActivity() {
         sessions: List<List<ChargeRecord>>,
         systemCapacityMah: Float?
     ) {
-        val prefs = getSharedPreferences("ChargeLogPrefs", MODE_PRIVATE)
-        val manualCapacity = prefs.getFloat("RATED_CAPACITY_MAH", 0f).takeIf { it > 0f }
+        val prefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
+        val manualCapacity = prefs.getFloat(PrefKeys.RATED_CAPACITY_MAH, 0f).takeIf { it > 0f }
         val input = EditText(this).apply {
             hint = getString(R.string.health_rated_capacity_hint)
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
-                    android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            inputType = InputType.TYPE_CLASS_NUMBER or
+                    InputType.TYPE_NUMBER_FLAG_DECIMAL
             setText(manualCapacity?.let { String.format(Locale.US, "%.0f", it) } ?: "")
             selectAll()
         }
@@ -260,7 +239,7 @@ class HistoryActivity : AppCompatActivity() {
             getString(R.string.health_system_capacity, it)
         } ?: getString(R.string.health_system_capacity_unavailable)
 
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle(R.string.health_capacity_title)
             .setMessage(getString(R.string.health_capacity_input_message, sessions.size, systemText))
             .setView(container)
@@ -272,9 +251,9 @@ class HistoryActivity : AppCompatActivity() {
                     return@setPositiveButton
                 }
                 if (typed != null && typed in 300f..30_000f) {
-                    prefs.edit().putFloat("RATED_CAPACITY_MAH", typed).apply()
+                    prefs.edit { putFloat(PrefKeys.RATED_CAPACITY_MAH, typed) }
                 } else if (rawInput.isEmpty()) {
-                    prefs.edit().remove("RATED_CAPACITY_MAH").apply()
+                    prefs.edit { remove(PrefKeys.RATED_CAPACITY_MAH) }
                 }
                 val rated = typed?.takeIf { it in 300f..30_000f }
                     ?: systemCapacityMah
@@ -343,7 +322,7 @@ class HistoryActivity : AppCompatActivity() {
                 }
             }
         }
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle(R.string.health_capacity_title)
             .setMessage(message)
             .setPositiveButton(android.R.string.ok, null)
@@ -353,19 +332,19 @@ class HistoryActivity : AppCompatActivity() {
     private fun writeHistoryJsonToUri(uri: android.net.Uri) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val dao = ChargeDatabase.getDatabase(this@HistoryActivity).chargeDao()
-                val records = dao.getAllRecordsOnce()
+                val repo = ChargeRepository.getInstance(this@HistoryActivity)
+                val records = repo.getAllRecordsOnce()
                 val grouped = records.groupBy { it.sessionId }
                 
-                val jsonArray = org.json.JSONArray()
+                val jsonArray = JSONArray()
                 for ((sessionId, sessionRecords) in grouped) {
-                    val sessionObj = org.json.JSONObject()
+                    val sessionObj = JSONObject()
                     sessionObj.put("id", sessionId)
                     sessionObj.put("sessionId", sessionId)
                     
-                    val recordsArray = org.json.JSONArray()
+                    val recordsArray = JSONArray()
                     for (rec in sessionRecords) {
-                        val recObj = org.json.JSONObject()
+                        val recObj = JSONObject()
                         recObj.put("timestamp", rec.timestamp)
                         recObj.put("voltage", rec.voltage.toDouble())
                         recObj.put("current", rec.current.toDouble())
@@ -412,9 +391,9 @@ class HistoryActivity : AppCompatActivity() {
                     inputStream.bufferedReader().use { it.readText() }
                 } ?: throw Exception("Failed to read file")
                 
-                val jsonArray = org.json.JSONArray(content)
-                val dao = ChargeDatabase.getDatabase(this@HistoryActivity).chargeDao()
-                val localRecords = dao.getAllRecordsOnce()
+                val jsonArray = JSONArray(content)
+                val repo = ChargeRepository.getInstance(this@HistoryActivity)
+                val localRecords = repo.getAllRecordsOnce()
                 
                 val localSessionMap = localRecords.groupBy { it.sessionId }
                     .mapValues { (_, recs) -> recs.associateBy { it.timestamp } }
@@ -438,8 +417,8 @@ class HistoryActivity : AppCompatActivity() {
                         val screenState = recObj.optInt("screenState", 2)
                         val batteryStatus = recObj.optInt("batteryStatus", BatteryManager.BATTERY_STATUS_UNKNOWN)
                         
-                        val maxVoltage = if (recObj.isNull("maxVoltage")) null else recObj.optDouble("maxVoltage").toFloat()
-                        val maxCurrent = if (recObj.isNull("maxCurrent")) null else recObj.optDouble("maxCurrent").toFloat()
+                        val maxVoltage = if (recObj.has("maxVoltage") && !recObj.isNull("maxVoltage")) recObj.getDouble("maxVoltage").toFloat() else null
+                        val maxCurrent = if (recObj.has("maxCurrent") && !recObj.isNull("maxCurrent")) recObj.getDouble("maxCurrent").toFloat() else null
                         
                         val importedRecord = ChargeRecord(
                             sessionId = importSessionId,
@@ -480,7 +459,7 @@ class HistoryActivity : AppCompatActivity() {
                 
                 launch(Dispatchers.Main) {
                     if (conflicts.isNotEmpty()) {
-                        com.google.android.material.dialog.MaterialAlertDialogBuilder(this@HistoryActivity)
+                        MaterialAlertDialogBuilder(this@HistoryActivity)
                             .setTitle(getString(R.string.conflict_dialog_title))
                             .setMessage(getString(R.string.conflict_dialog_msg, conflicts.size))
                             .setPositiveButton(getString(R.string.conflict_use_imported)) { _, _ ->
@@ -516,17 +495,19 @@ class HistoryActivity : AppCompatActivity() {
     ) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val dao = ChargeDatabase.getDatabase(this@HistoryActivity).chargeDao()
+                val repo = ChargeRepository.getInstance(this@HistoryActivity)
                 
                 if (recordsToInsert.isNotEmpty()) {
-                    dao.insertAll(recordsToInsert)
+                    repo.insertAll(recordsToInsert)
                 }
                 
-                if (useImported && conflicts.isNotEmpty()) {
-                    val recordsToUpdate = conflicts.map { (local, imported) ->
-                        imported.copy(id = local.id)
+                if (conflicts.isNotEmpty()) {
+                    if (useImported) {
+                        val recordsToUpdate = conflicts.map { (local, imported) ->
+                            imported.copy(id = local.id)
+                        }
+                        repo.updateAll(recordsToUpdate)
                     }
-                    dao.updateAll(recordsToUpdate)
                 }
                 
                 launch(Dispatchers.Main) {
@@ -540,82 +521,5 @@ class HistoryActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-}
-
-class HistoryAdapter(
-    private val onClick: (ChargeSession) -> Unit,
-    private val onLongClick: (ChargeSession) -> Unit
-) : RecyclerView.Adapter<HistoryAdapter.ViewHolder>() {
-
-    private var sessions = listOf<ChargeSession>()
-    private val selectedIds = mutableSetOf<Long>()
-
-    fun selectedSessionIds(): Set<Long> = selectedIds.toSet()
-
-    @SuppressLint("NotifyDataSetChanged")
-    fun submitList(list: List<ChargeSession>) {
-        sessions = list
-        selectedIds.retainAll(list.mapTo(mutableSetOf()) { it.sessionId })
-        notifyDataSetChanged()
-    }
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_history_session, parent, false)
-        return ViewHolder(view)
-    }
-
-    @SuppressLint("SetTextI18n")
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val session = sessions[position]
-        val context = holder.itemView.context
-        val durationMins = (session.endTime - session.startTime) / 60000
-
-        val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        holder.tvSessionTime.text = format.format(Date(session.startTime))
-        holder.tvSessionDuration.text = context.getString(R.string.duration_mins, durationMins)
-        
-        // Build power range string
-        val powerBuilder = StringBuilder()
-        if (session.minChargePower != null && session.maxChargePower != null) {
-            powerBuilder.append(context.getString(R.string.history_charge_power, session.minChargePower, session.maxChargePower))
-        }
-        if (session.minDischargePower != null && session.maxDischargePower != null) {
-            if (powerBuilder.isNotEmpty()) powerBuilder.append("\n")
-            powerBuilder.append(context.getString(R.string.history_discharge_power, session.minDischargePower, session.maxDischargePower))
-        }
-        if (powerBuilder.isEmpty()) {
-            powerBuilder.append(context.getString(R.string.history_power_empty))
-        }
-        holder.tvPowerRange.text = powerBuilder.toString()
-        
-        // Battery range
-        val batChange = session.endBattery - session.startBattery
-        val changeSign = if (batChange >= 0) "+$batChange%" else "$batChange%"
-        holder.tvBatteryRange.text = context.getString(R.string.history_battery_range, session.startBattery, session.endBattery, changeSign)
-
-        holder.checkHealthSelection.setOnCheckedChangeListener(null)
-        holder.checkHealthSelection.isChecked = session.sessionId in selectedIds
-        holder.checkHealthSelection.setOnCheckedChangeListener { _, checked ->
-            if (checked) selectedIds.add(session.sessionId) else selectedIds.remove(session.sessionId)
-        }
-
-        holder.itemView.setOnClickListener {
-            onClick(session)
-        }
-        holder.itemView.setOnLongClickListener {
-            onLongClick(session)
-            true
-        }
-    }
-
-    override fun getItemCount() = sessions.size
-
-    class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val tvSessionTime: TextView = view.findViewById(R.id.tvSessionTime)
-        val tvSessionDuration: TextView = view.findViewById(R.id.tvSessionDuration)
-        val tvPowerRange: TextView = view.findViewById(R.id.tvPowerRange)
-        val tvBatteryRange: TextView = view.findViewById(R.id.tvBatteryRange)
-        val checkHealthSelection: android.widget.CheckBox = view.findViewById(R.id.checkHealthSelection)
     }
 }
