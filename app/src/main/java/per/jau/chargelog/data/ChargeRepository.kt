@@ -22,7 +22,7 @@ class ChargeRepository(private val dao: ChargeDao) {
 
     fun getAllRecords(): Flow<List<ChargeRecord>> = dao.getAllRecords()
 
-    suspend fun deleteRecordsBySession(sessionId: Long) = dao.deleteRecordsBySession(sessionId)
+    suspend fun deleteRecordsBySession(sessionId: Long): Int = dao.deleteRecordsBySession(sessionId)
 
     suspend fun deleteRecordsBefore(sessionId: Long, timestamp: Long) = dao.deleteRecordsBefore(sessionId, timestamp)
 

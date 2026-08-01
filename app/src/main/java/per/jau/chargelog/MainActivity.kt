@@ -106,6 +106,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvCurrentMaxPower: TextView
     private lateinit var layoutPowerSummaryBanner: View
     private lateinit var tvPowerSummaryText: TextView
+    private lateinit var layoutPowerPeakSummary: View
+    private lateinit var tvPowerPeakCharge: TextView
+    private lateinit var tvPowerPeakDischarge: TextView
     private var maxChargingLimitAnimator: AnimatorSet? = null
     private var maxChargingLimitTargetVisible = false
     private var maxChargingLimitVoltage: Float? = null
@@ -224,6 +227,9 @@ class MainActivity : AppCompatActivity() {
         tvCurrentMaxPower = findViewById(R.id.tvCurrentMaxPower)
         layoutPowerSummaryBanner = findViewById(R.id.layoutPowerSummaryBanner)
         tvPowerSummaryText = findViewById(R.id.tvPowerSummaryText)
+        layoutPowerPeakSummary = findViewById(R.id.layoutPowerPeakSummary)
+        tvPowerPeakCharge = findViewById(R.id.tvPowerPeakCharge)
+        tvPowerPeakDischarge = findViewById(R.id.tvPowerPeakDischarge)
         restoreMaxChargingLimitState(savedInstanceState)
 
         val tvFooter = findViewById<TextView>(R.id.tvFooter)
@@ -296,6 +302,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnStop.setOnClickListener {
+            getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE).edit {
+                putBoolean(PrefKeys.IS_RECORDING, false)
+                putBoolean(PrefKeys.FORCE_NEW_SESSION, true)
+            }
             val stopIntent = Intent(this, ChargeLoggingService::class.java).apply {
                 action = ChargeLoggingService.ACTION_STOP_RECORDING
             }
@@ -1300,7 +1310,10 @@ class MainActivity : AppCompatActivity() {
     private fun updatePowerTabSummary(targetIndex: Int = -1) {
         if (!::layoutPowerSummaryBanner.isInitialized || !::tvPowerSummaryText.isInitialized) return
         if (selectedTabIndex != 2 || currentRecords.isEmpty()) {
-            layoutPowerSummaryBanner.visibility = View.GONE
+            setViewsVisibleAnimated(
+                layoutPowerSummaryBanner to false,
+                layoutPowerPeakSummary to false
+            )
             return
         }
 
@@ -1336,7 +1349,30 @@ class MainActivity : AppCompatActivity() {
         }
 
         tvPowerSummaryText.text = text
-        layoutPowerSummaryBanner.visibility = View.VISIBLE
+        val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
+        val stats = SessionStatsCalculator.calculate(currentRecords)
+        val maxChargePower = stats?.maxChargePower
+        val maxDischargePower = stats?.minDischargePower?.let(::abs)
+
+        if (historySessionId == -1L && (maxChargePower != null || maxDischargePower != null)) {
+            if (maxChargePower != null) {
+                tvPowerPeakCharge.text = getString(R.string.power_peak_charge, maxChargePower)
+            }
+            if (maxDischargePower != null) {
+                tvPowerPeakDischarge.text = getString(R.string.power_peak_discharge, maxDischargePower)
+            }
+            setViewsVisibleAnimated(
+                layoutPowerSummaryBanner to true,
+                layoutPowerPeakSummary to true,
+                tvPowerPeakCharge to (maxChargePower != null),
+                tvPowerPeakDischarge to (maxDischargePower != null)
+            )
+        } else {
+            setViewsVisibleAnimated(
+                layoutPowerSummaryBanner to true,
+                layoutPowerPeakSummary to false
+            )
+        }
     }
     override fun onResume() {
         super.onResume()
