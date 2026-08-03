@@ -99,6 +99,10 @@
     
     <string name="dialog_delete_session_title">删除历史记录</string>
     <string name="dialog_delete_session_msg">确定要删除这段充电历史记录吗？此操作无法撤销。</string>
+    <string name="dialog_delete_active_session_msg">这段记录仍在进行。停止记录并删除后，无法恢复。</string>
+    <string name="stop_and_delete">停止并删除</string>
+    <string name="history_delete_success">已删除 %d 条数据</string>
+    <string name="history_delete_not_found">未找到可删除的数据</string>
     
     <string name="duration_mins">时长: %d 分钟</string>
     <string name="history_charge_power">充电功率: 最小 %1$.1f W - 最大 %2$.1f W</string>
@@ -166,11 +170,13 @@
     <string name="import_history">导入</string>
 
     <!-- Power Chart Charged Energy Summary -->
-    <string name="power_charged_summary_total">⚡ 本次累计充入: %1$s (%2$d%% → %3$d%%)%4$s</string>
-    <string name="power_charged_summary_selected">⚡ 至选定点累计充入: %1$s (%2$d%% → %3$d%%)%4$s</string>
-    <string name="power_discharged_summary_total">⚡ 本次累计消耗: %1$s (%2$d%% → %3$d%%)%4$s</string>
-    <string name="power_discharged_summary_selected">⚡ 至选定点累计消耗: %1$s (%2$d%% → %3$d%%)%4$s</string>
-    <string name="power_charged_mah_wh"> · 约 %1$d mAh (%2$s Wh)</string>
+    <string name="power_charged_summary_total">⚡ 本轮 · 充入 %1$s · %2$d→%3$d%%%4$s</string>
+    <string name="power_charged_summary_selected">⚡ 选定 · 充入 %1$s · %2$d→%3$d%%%4$s</string>
+    <string name="power_discharged_summary_total">⚡ 本轮 · 消耗 %1$s · %2$d→%3$d%%%4$s</string>
+    <string name="power_discharged_summary_selected">⚡ 选定 · 消耗 %1$s · %2$d→%3$d%%%4$s</string>
+    <string name="power_charged_mah_wh"> · ≈%1$dmAh / %2$sWh</string>
+    <string name="power_peak_charge">峰值充电 %.1f W</string>
+    <string name="power_peak_discharge">峰值放电 %.1f W</string>
 
     <string name="export_history">导出</string>
     <string name="export_success">历史记录导出成功</string>

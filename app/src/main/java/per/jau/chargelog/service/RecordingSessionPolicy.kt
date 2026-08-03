@@ -11,4 +11,10 @@ internal object RecordingSessionPolicy {
     } else {
         existingSessionId
     }
+
+    fun shouldPersistSample(
+        isRecording: Boolean,
+        activeSessionId: Long,
+        sampleSessionId: Long
+    ): Boolean = isRecording && activeSessionId == sampleSessionId
 }

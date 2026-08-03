@@ -18,4 +18,11 @@ class RecordingSessionPolicyTest {
     fun missingSessionIdIsRepairedEvenIfRecordingFlagIsSet() {
         assertEquals(200L, RecordingSessionPolicy.sessionIdForStart(true, false, 0L, 200L))
     }
+
+    @Test
+    fun stoppedOrReplacedSessionDoesNotPersistAnInFlightSample() {
+        assertEquals(false, RecordingSessionPolicy.shouldPersistSample(false, 100L, 100L))
+        assertEquals(false, RecordingSessionPolicy.shouldPersistSample(true, 200L, 100L))
+        assertEquals(true, RecordingSessionPolicy.shouldPersistSample(true, 100L, 100L))
+    }
 }

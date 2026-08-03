@@ -478,22 +478,61 @@
         android:id="@+id/layoutPowerSummaryBanner"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:gravity="center"
         android:background="@drawable/bg_card_surface"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="7dp"
         android:layout_marginTop="2dp"
         android:layout_marginBottom="4dp"
         android:visibility="gone">
 
         <TextView
             android:id="@+id/tvPowerSummaryText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="match_parent"
+            android:layout_height="38dp"
+            android:paddingHorizontal="12dp"
+            android:gravity="center"
+            android:singleLine="true"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
             android:textSize="12sp"
             android:textStyle="bold"
-            android:textColor="@color/dashboard_value_summary" />
+            android:textColor="@color/dashboard_value_summary"
+            app:autoSizeTextType="uniform"
+            app:autoSizeMinTextSize="9sp"
+            app:autoSizeMaxTextSize="12sp"
+            app:autoSizeStepGranularity="1sp" />
+
+        <LinearLayout
+            android:id="@+id/layoutPowerPeakSummary"
+            android:layout_width="match_parent"
+            android:layout_height="30dp"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvPowerPeakCharge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:includeFontPadding="false"
+                android:textColor="@color/dashboard_value_summary"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvPowerPeakDischarge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:textColor="@color/dashboard_value_summary"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- Background Stats Custom Banner -->

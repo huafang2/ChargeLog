@@ -27,6 +27,7 @@ import org.json.JSONObject
 import per.jau.chargelog.constants.PrefKeys
 import per.jau.chargelog.data.ChargeRecord
 import per.jau.chargelog.data.ChargeRepository
+import per.jau.chargelog.service.ChargeLoggingService
 import per.jau.chargelog.utils.BatteryHealthEstimate
 import per.jau.chargelog.utils.BatteryHealthEstimator
 import per.jau.chargelog.utils.BatteryHealthResult
@@ -118,12 +119,35 @@ class HistoryActivity : AppCompatActivity() {
                 startActivity(intent)
             },
             onLongClick = { session ->
+                val prefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
+                val isActiveSession = prefs.getBoolean(PrefKeys.IS_RECORDING, false) &&
+                        prefs.getLong(PrefKeys.CURRENT_SESSION_START, 0L) == session.sessionId
                 MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.dialog_delete_session_title)
-                    .setMessage(R.string.dialog_delete_session_msg)
-                    .setPositiveButton(R.string.menu_delete_segment) { _, _ ->
+                    .setMessage(
+                        if (isActiveSession) R.string.dialog_delete_active_session_msg
+                        else R.string.dialog_delete_session_msg
+                    )
+                    .setPositiveButton(
+                        if (isActiveSession) R.string.stop_and_delete else R.string.menu_delete_segment
+                    ) { _, _ ->
+                        if (isActiveSession) {
+                            prefs.edit {
+                                putBoolean(PrefKeys.IS_RECORDING, false)
+                                putBoolean(PrefKeys.FORCE_NEW_SESSION, true)
+                            }
+                            startForegroundService(Intent(this, ChargeLoggingService::class.java).apply {
+                                action = ChargeLoggingService.ACTION_STOP_RECORDING
+                            })
+                        }
                         lifecycleScope.launch {
-                            repo.deleteRecordsBySession(session.sessionId)
+                            val deleted = repo.deleteRecordsBySession(session.sessionId)
+                            val message = if (deleted > 0) {
+                                getString(R.string.history_delete_success, deleted)
+                            } else {
+                                getString(R.string.history_delete_not_found)
+                            }
+                            Toast.makeText(this@HistoryActivity, message, Toast.LENGTH_SHORT).show()
                         }
                     }
                     .setNegativeButton(R.string.cancel, null)

@@ -260,24 +260,31 @@ class ChargeLoggingService : Service() {
                                 batteryStatus = batteryStatusValue
                             )
 
-                            repo.insert(record)
-                            
-                            // Throttled notification update: only update if screen is on, or battery level changes, or every 10 samples
-                            val lastNotificationLevel = prefs.getInt(PrefKeys.LAST_NOTIFICATION_BATTERY_LEVEL, -1)
-                            val sampleCount = prefs.getInt(PrefKeys.BG_SAMPLE_COUNT, 0) + 1
-                            prefs.edit { putInt(PrefKeys.BG_SAMPLE_COUNT, sampleCount) }
+                            val canPersist = RecordingSessionPolicy.shouldPersistSample(
+                                isRecording = prefs.getBoolean(PrefKeys.IS_RECORDING, false),
+                                activeSessionId = prefs.getLong(PrefKeys.CURRENT_SESSION_START, 0L),
+                                sampleSessionId = sessionId
+                            )
+                            if (canPersist) {
+                                repo.insert(record)
 
-                            if (isInteractive || latestBatteryLevel != lastNotificationLevel || sampleCount % 10 == 0) {
-                                updateNotification(avgVoltage, avgCurrent, avgPower, latestBatteryLevel, isRecording = true)
-                                prefs.edit {
-                                    putInt(
-                                        PrefKeys.LAST_NOTIFICATION_BATTERY_LEVEL,
-                                        latestBatteryLevel
-                                    )
+                                // Throttled notification update: only update if screen is on, or battery level changes, or every 10 samples
+                                val lastNotificationLevel = prefs.getInt(PrefKeys.LAST_NOTIFICATION_BATTERY_LEVEL, -1)
+                                val sampleCount = prefs.getInt(PrefKeys.BG_SAMPLE_COUNT, 0) + 1
+                                prefs.edit { putInt(PrefKeys.BG_SAMPLE_COUNT, sampleCount) }
+
+                                if (isInteractive || latestBatteryLevel != lastNotificationLevel || sampleCount % 10 == 0) {
+                                    updateNotification(avgVoltage, avgCurrent, avgPower, latestBatteryLevel, isRecording = true)
+                                    prefs.edit {
+                                        putInt(
+                                            PrefKeys.LAST_NOTIFICATION_BATTERY_LEVEL,
+                                            latestBatteryLevel
+                                        )
+                                    }
                                 }
+
+                                updateBackgroundPowerStats(prefs, avgPower)
                             }
-                            
-                            updateBackgroundPowerStats(prefs, avgPower)
                         }
 
                         if (!charging && wakeLock.isHeld) {

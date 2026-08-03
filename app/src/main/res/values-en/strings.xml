@@ -99,6 +99,10 @@
     
     <string name="dialog_delete_session_title">Delete History Record</string>
     <string name="dialog_delete_session_msg">Are you sure you want to delete this history record? This cannot be undone.</string>
+    <string name="dialog_delete_active_session_msg">This recording is still active. Stopping and deleting it cannot be undone.</string>
+    <string name="stop_and_delete">Stop &amp; Delete</string>
+    <string name="history_delete_success">Deleted %d data points</string>
+    <string name="history_delete_not_found">No data was found to delete</string>
     
     <string name="duration_mins">Duration: %d mins</string>
     <string name="history_charge_power">Charge Power: Min %1$.1f W - Max %2$.1f W</string>
@@ -179,9 +183,11 @@
     <string name="github_dialog_reset">Back</string>
 
     <!-- Power Chart Charged Energy Summary -->
-    <string name="power_charged_summary_total">⚡ Charged Energy: %1$s (%2$d%% → %3$d%%)%4$s</string>
-    <string name="power_charged_summary_selected">⚡ Charged to Selected: %1$s (%2$d%% → %3$d%%)%4$s</string>
-    <string name="power_discharged_summary_total">⚡ Net Energy Consumed: %1$s (%2$d%% → %3$d%%)%4$s</string>
-    <string name="power_discharged_summary_selected">⚡ Consumed to Selected: %1$s (%2$d%% → %3$d%%)%4$s</string>
-    <string name="power_charged_mah_wh"> · approx %1$d mAh (%2$s Wh)</string>
+    <string name="power_charged_summary_total">⚡ Session · Charged %1$s · %2$d→%3$d%%%4$s</string>
+    <string name="power_charged_summary_selected">⚡ Selected · Charged %1$s · %2$d→%3$d%%%4$s</string>
+    <string name="power_discharged_summary_total">⚡ Session · Consumed %1$s · %2$d→%3$d%%%4$s</string>
+    <string name="power_discharged_summary_selected">⚡ Selected · Consumed %1$s · %2$d→%3$d%%%4$s</string>
+    <string name="power_charged_mah_wh"> · ~%1$dmAh / %2$sWh</string>
+    <string name="power_peak_charge">Peak charge %.1f W</string>
+    <string name="power_peak_discharge">Peak discharge %.1f W</string>
 </resources>
