@@ -20,8 +20,8 @@ import per.jau.chargelog.R
 import per.jau.chargelog.data.ChargeRepository
 import per.jau.chargelog.data.ChargeRecord
 import per.jau.chargelog.utils.BatteryUtils
+import per.jau.chargelog.utils.BatteryDisplayState
 import per.jau.chargelog.utils.BatteryFlow
-import per.jau.chargelog.utils.BatteryFlowDirection
 import per.jau.chargelog.utils.HistoryRetention
 import per.jau.chargelog.constants.PrefKeys
 import androidx.core.content.edit
@@ -331,17 +331,17 @@ class ChargeLoggingService : Service() {
             BatteryManager.EXTRA_STATUS,
             BatteryManager.BATTERY_STATUS_UNKNOWN
         ) ?: BatteryManager.BATTERY_STATUS_UNKNOWN
-        val direction = BatteryFlow.direction(batteryStatus, current)
-        val stateTitle = when {
-            batteryStatus == BatteryManager.BATTERY_STATUS_FULL -> getString(R.string.service_full, power)
-            direction == BatteryFlowDirection.CHARGING -> getString(R.string.service_charging, power)
-            direction == BatteryFlowDirection.DISCHARGING -> getString(R.string.service_discharging, power)
-            else -> getString(R.string.service_not_charging, power)
+        val displayState = BatteryFlow.displayState(batteryStatus, current, batteryLevel)
+        val stateTitle = when (displayState) {
+            BatteryDisplayState.FULL -> getString(R.string.service_full, power)
+            BatteryDisplayState.CHARGING -> getString(R.string.service_charging, power)
+            BatteryDisplayState.DISCHARGING -> getString(R.string.service_discharging, power)
+            BatteryDisplayState.IDLE -> getString(R.string.service_not_charging, power)
         }
 
         val recordStatus = if (isRecording) getString(R.string.service_status_recording) else getString(R.string.service_status_stopped)
 
-        val limitText = if (batteryStatusIntent != null && direction == BatteryFlowDirection.CHARGING) {
+        val limitText = if (batteryStatusIntent != null && displayState == BatteryDisplayState.CHARGING) {
             val maxCurrentMicro = batteryStatusIntent.getIntExtra("max_charging_current", -1)
             val maxVoltageMicro = batteryStatusIntent.getIntExtra("max_charging_voltage", -1)
             if (maxCurrentMicro > 0 && maxVoltageMicro > 0) {

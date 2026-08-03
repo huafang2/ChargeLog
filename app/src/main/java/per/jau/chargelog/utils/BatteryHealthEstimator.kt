@@ -19,12 +19,11 @@ data class BatteryHealthEstimate(
 
 sealed class BatteryHealthResult {
     data class Ready(val estimate: BatteryHealthEstimate) : BatteryHealthResult()
-    data class Insufficient(val totalBatterySpanPercent: Int) : BatteryHealthResult()
     data object Invalid : BatteryHealthResult()
 }
 
 object BatteryHealthEstimator {
-    const val MIN_TOTAL_SPAN_PERCENT = 50
+    const val LOW_CONFIDENCE_SPAN_PERCENT = 50
 
     fun estimate(
         sessions: List<List<ChargeRecord>>,
@@ -94,21 +93,21 @@ object BatteryHealthEstimator {
             }
 
             for ((a, b) in records.zipWithNext()) {
-                if (a.batteryStatus == BatteryManager.BATTERY_STATUS_FULL) {
+                if (BatteryFlow.isConfirmedFull(a.batteryStatus, a.batteryLevel)) {
                     finishRun()
                     break
                 }
                 if (!isValid(a) || !isValid(b)) {
                     hasGap = true
                     finishRun()
-                    if (b.batteryStatus == BatteryManager.BATTERY_STATUS_FULL) break
+                    if (BatteryFlow.isConfirmedFull(b.batteryStatus, b.batteryLevel)) break
                     continue
                 }
                 val deltaMs = b.timestamp - a.timestamp
                 if (deltaMs <= 0 || deltaMs > maxAllowedGap) {
                     hasGap = true
                     finishRun()
-                    if (b.batteryStatus == BatteryManager.BATTERY_STATUS_FULL) break
+                    if (BatteryFlow.isConfirmedFull(b.batteryStatus, b.batteryLevel)) break
                     continue
                 }
                 if (runStartLevel == null) runStartLevel = a.batteryLevel
@@ -125,7 +124,7 @@ object BatteryHealthEstimator {
                     intervalHasUnknown && (a.batteryLevel == 100 || b.batteryLevel == 100)
                 )
 
-                if (b.batteryStatus == BatteryManager.BATTERY_STATUS_FULL) {
+                if (BatteryFlow.isConfirmedFull(b.batteryStatus, b.batteryLevel)) {
                     finishRun()
                     break
                 }
@@ -143,10 +142,9 @@ object BatteryHealthEstimator {
             }
         }
 
-        if (totalSpan < MIN_TOTAL_SPAN_PERCENT) {
-            return BatteryHealthResult.Insufficient(totalSpan)
+        if (totalSpan <= 0 || totalNetMah <= 0.0 || acceptedSessions == 0) {
+            return BatteryHealthResult.Invalid
         }
-        if (totalNetMah <= 0.0 || acceptedSessions == 0) return BatteryHealthResult.Invalid
 
         val estimatedFullMah = (totalNetMah / (totalSpan / 100.0)).toFloat()
         if (!estimatedFullMah.isFinite() || estimatedFullMah !in 300f..30_000f) {
@@ -156,7 +154,8 @@ object BatteryHealthEstimator {
             ?.takeIf { it.isFinite() && it > 0f }
             ?.let { estimatedFullMah / it * 100f }
         val confidence = when {
-            hasGap || hasLegacyFullTail || (health != null && health !in 65f..135f) ->
+            hasGap || hasLegacyFullTail || totalSpan <= LOW_CONFIDENCE_SPAN_PERCENT ||
+                    (health != null && health !in 65f..135f) ->
                 BatteryHealthEstimate.Confidence.LOW
             totalSpan >= 100 && acceptedSessions >= 2 -> BatteryHealthEstimate.Confidence.HIGH
             else -> BatteryHealthEstimate.Confidence.MEDIUM

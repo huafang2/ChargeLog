@@ -1,7 +1,5 @@
 package per.jau.chargelog.utils
 
-import android.os.BatteryManager
-
 import per.jau.chargelog.data.ChargeRecord
 
 data class ChargeStats(
@@ -97,7 +95,8 @@ object SessionStatsCalculator {
                 val durationHours = deltaMs / 3_600_000.0
                 val averageCurrent = (a.current + b.current) / 2.0
                 val isPositiveMaintenanceAfterFull =
-                    a.batteryStatus == BatteryManager.BATTERY_STATUS_FULL && averageCurrent > 0.0
+                    BatteryFlow.isConfirmedFull(a.batteryStatus, a.batteryLevel) &&
+                            averageCurrent > 0.0
                 if (!isPositiveMaintenanceAfterFull) {
                     netMah += averageCurrent * durationHours * 1000.0
                     netWh += (a.power + b.power) / 2.0 * durationHours

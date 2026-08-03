@@ -11,6 +11,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.transition.ChangeBounds
@@ -58,6 +60,7 @@ import per.jau.chargelog.data.ChargeRecord
 import per.jau.chargelog.data.ChargeRepository
 import per.jau.chargelog.service.ChargeLoggingService
 import per.jau.chargelog.ui.RawDataDialogHelper
+import per.jau.chargelog.utils.BatteryDisplayState
 import per.jau.chargelog.utils.BatteryFlow
 import per.jau.chargelog.utils.BatteryUtils
 import per.jau.chargelog.utils.FastChargeLimit
@@ -118,6 +121,7 @@ class MainActivity : AppCompatActivity() {
     private var observeJob: Job? = null
     private var liveTextUpdateJob: Job? = null
     private var lastHighlightedX: Float? = null
+    private var selectedRecordTimestamp: Long? = null
     
     // For adaptive text coloring
     private var textColorPrimary: Int = Color.BLACK
@@ -137,14 +141,8 @@ class MainActivity : AppCompatActivity() {
             }
         } else if (key == PrefKeys.IS_RECORDING) {
             val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
-            if (historySessionId == -1L) {
-                if (::lineChart.isInitialized) {
-                    val highlight = lineChart.highlighted?.firstOrNull()
-                    val record = highlight?.let { currentRecords.getOrNull(it.x.toInt()) }
-                    updateStatusTitle(highlight != null, record)
-                } else {
-                    tvStatus.text = if (isRecording()) "正在记录充电数据..." else "充电日志已停止"
-                }
+            if (historySessionId == -1L && ::tvStatus.isInitialized) {
+                refreshStatusForCurrentMode()
                 updateButtonStates()
             }
         }
@@ -164,6 +162,9 @@ class MainActivity : AppCompatActivity() {
 
         if (savedInstanceState != null) {
             selectedTabIndex = savedInstanceState.getInt("SELECTED_TAB_INDEX", 2)
+            selectedRecordTimestamp = savedInstanceState
+                .getLong("SELECTED_RECORD_TIMESTAMP", Long.MIN_VALUE)
+                .takeIf { it != Long.MIN_VALUE }
         }
 
         val mainView = findViewById<View>(R.id.main)
@@ -203,6 +204,11 @@ class MainActivity : AppCompatActivity() {
         lineChart = findViewById(R.id.lineChart)
         sbChartScrubber = findViewById(R.id.sbChartScrubber)
         tvStatus = findViewById(R.id.tvStatus)
+        tvStatus.setOnClickListener {
+            if (selectedRecordTimestamp != null) {
+                clearChartSelection()
+            }
+        }
         btnStart = findViewById(R.id.btnStart)
         btnStop = findViewById(R.id.btnStop)
         btnHistory = findViewById(R.id.btnHistory)
@@ -288,7 +294,7 @@ class MainActivity : AppCompatActivity() {
                 action = ChargeLoggingService.ACTION_START_RECORDING
             }
             startForegroundService(startIntent)
-            tvStatus.text = getString(R.string.recording)
+            refreshStatusForCurrentMode()
             setViewsVisibleAnimated(
                 btnStart to false,
                 btnStop to true
@@ -300,7 +306,7 @@ class MainActivity : AppCompatActivity() {
                 action = ChargeLoggingService.ACTION_STOP_RECORDING
             }
             startForegroundService(stopIntent)
-            tvStatus.text = getString(R.string.stopped)
+            refreshStatusForCurrentMode()
             setViewsVisibleAnimated(
                 btnStart to true,
                 btnStop to false
@@ -342,7 +348,7 @@ class MainActivity : AppCompatActivity() {
                             prefs.edit {
                                 putBoolean(PrefKeys.IS_RECORDING, false)
                             }
-                            tvStatus.text = getString(R.string.stopped)
+                            refreshStatusForCurrentMode()
                             updateButtonStates()
                             
                             // 2. Discard current session data by deleting records matching sessionId
@@ -393,12 +399,12 @@ class MainActivity : AppCompatActivity() {
         
         if (historySessionId != -1L) {
             supportActionBar?.setDisplayHomeAsUpEnabled(true)
-            tvStatus.text = getString(R.string.viewing_history)
+            refreshStatusForCurrentMode()
             btnHistory.text = getString(R.string.back_to_history)
             observeData(historySessionId)
         } else {
             supportActionBar?.setDisplayHomeAsUpEnabled(false)
-            tvStatus.text = if (isRecording()) getString(R.string.recording) else getString(R.string.stopped)
+            refreshStatusForCurrentMode()
             btnHistory.text = getString(R.string.history)
             observeData()
         }
@@ -580,36 +586,36 @@ class MainActivity : AppCompatActivity() {
 
         lineChart.setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
             override fun onValueSelected(e: Entry?, h: Highlight?) {
-                if (e != null && currentRecords.isNotEmpty()) {
-                    if (lastHighlightedX != null && lastHighlightedX == e.x && !isDraggingScrubber && !lineChart.isDraggingVerticalLine) {
-                        // User tapped the already highlighted point: deselect
-                        lastHighlightedX = null
-                        lineChart.post {
-                            lineChart.highlightValue(null, true)
-                        }
-                        menuDeleteSegment?.isVisible = false
-                        return
-                    }
-                    
-                    lastHighlightedX = e.x
+                if (e == null || currentRecords.isEmpty()) return
 
-                    // Find the closest record
-                    val targetTime = chartBaseTime + e.x.toLong()
-                    val index = currentRecords.indices.minByOrNull { abs(currentRecords[it].timestamp - targetTime) } ?: -1
-                    if (index != -1) {
-                        val record = currentRecords[index]
-                        updateDashboardText(record, true)
-                        updatePowerTabSummary(index)
-                        menuDeleteSegment?.isVisible = true
-                        // Sync scrubber if not dragging it
-                        if (!isDraggingScrubber) {
-                            sbChartScrubber.progress = index
-                        }
-                    }
+                val targetTime = chartBaseTime + e.x.toLong()
+                val index = currentRecords.indices.minByOrNull {
+                    abs(currentRecords[it].timestamp - targetTime)
+                } ?: -1
+                if (index == -1) return
+
+                val record = currentRecords[index]
+                if (selectedRecordTimestamp == record.timestamp &&
+                    lineChart.highlighted?.isNotEmpty() == true &&
+                    !isDraggingScrubber &&
+                    !lineChart.isDraggingVerticalLine
+                ) {
+                    clearChartSelection()
+                    return
+                }
+
+                selectedRecordTimestamp = record.timestamp
+                lastHighlightedX = e.x
+                updateDashboardText(record, true)
+                updatePowerTabSummary(index)
+                menuDeleteSegment?.isVisible = true
+                if (!isDraggingScrubber) {
+                    sbChartScrubber.progress = index
                 }
             }
 
             override fun onNothingSelected() {
+                selectedRecordTimestamp = null
                 lastHighlightedX = null
                 menuDeleteSegment?.isVisible = false
                 if (currentRecords.isNotEmpty()) {
@@ -619,6 +625,8 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         updateDashboardText(currentRecords.last(), false)
                     }
+                } else {
+                    refreshStatusForCurrentMode()
                 }
                 updatePowerTabSummary()
             }
@@ -646,15 +654,22 @@ class MainActivity : AppCompatActivity() {
                 val tolerance = 25f * density // 25 dp
                 
                 if (abs(me.x - pixelX) < tolerance) {
-                    lineChart.post {
-                        lineChart.highlightValue(null, true)
-                    }
+                    clearChartSelection()
                 }
             }
             
             override fun onChartFling(me1: android.view.MotionEvent?, me2: android.view.MotionEvent?, velocityX: Float, velocityY: Float) {}
             override fun onChartScale(me: android.view.MotionEvent?, scaleX: Float, scaleY: Float) {}
             override fun onChartTranslate(me: android.view.MotionEvent?, dX: Float, dY: Float) {}
+        }
+    }
+
+    private fun clearChartSelection() {
+        selectedRecordTimestamp = null
+        lastHighlightedX = null
+        menuDeleteSegment?.isVisible = false
+        lineChart.post {
+            lineChart.highlightValue(null, true)
         }
     }
 
@@ -701,6 +716,8 @@ class MainActivity : AppCompatActivity() {
             flow.collectLatest { records ->
                 if (records.isEmpty()) {
                     currentRecords = emptyList()
+                    selectedRecordTimestamp = null
+                    lastHighlightedX = null
                     lineChart.clear()
                     setViewsVisibleAnimated(
                         btnShowData to false,
@@ -708,7 +725,7 @@ class MainActivity : AppCompatActivity() {
                     )
                     menuDeleteSegment?.isVisible = false
                     val latest = repo.getLatestRecord()
-                    if (latest != null) {
+                    if (latest != null && sessionId == -1L) {
                         chartBaseTime = latest.timestamp
                         updateDashboardText(latest, false)
                     } else {
@@ -719,6 +736,8 @@ class MainActivity : AppCompatActivity() {
                         tvCurrentProtocol.text = "${getString(R.string.battery_label)}--"
                         animateMaxChargingLimitVisibility(false)
                     }
+                    refreshStatusForCurrentMode()
+                    updatePowerTabSummary()
                     return@collectLatest
                 }
                 currentRecords = records
@@ -734,18 +753,43 @@ class MainActivity : AppCompatActivity() {
                     sbChartScrubber to showScrubber
                 )
 
-                // If no point is selected, update dashboard with the latest record or extreme values
-                if (lineChart.highlighted?.isNotEmpty() == true) {
-                    // Let the selection listener handle the text
+                val selectedIndexBeforeUpdate = selectedRecordTimestamp?.let { timestamp ->
+                    records.indexOfFirst { it.timestamp == timestamp }.takeIf { it >= 0 }
+                }
+                if (selectedRecordTimestamp != null && selectedIndexBeforeUpdate == null) {
+                    selectedRecordTimestamp = null
+                    lastHighlightedX = null
+                    menuDeleteSegment?.isVisible = false
+                    lineChart.highlightValue(null, false)
+                }
+
+                // Keep dashboard and power summary on the same timestamp while selected.
+                if (selectedIndexBeforeUpdate != null && selectedRecordTimestamp != null) {
+                    val selectedRecord = records[selectedIndexBeforeUpdate]
+                    updateDashboardText(selectedRecord, true)
+                    updatePowerTabSummary(selectedIndexBeforeUpdate)
+                } else if (sessionId != -1L) {
+                    updateDashboardWithExtremeValues()
                 } else {
-                    if (sessionId != -1L) {
-                        updateDashboardWithExtremeValues()
-                    } else {
-                        updateDashboardText(records.last(), false)
-                    }
+                    updateDashboardText(records.last(), false)
                 }
 
                 updateChartData()
+
+                selectedRecordTimestamp?.let { timestamp ->
+                    val selectedIndex = records.indexOfFirst { it.timestamp == timestamp }
+                    if (selectedIndex >= 0) {
+                        lastHighlightedX = (records[selectedIndex].timestamp - chartBaseTime).toFloat()
+                        menuDeleteSegment?.isVisible = true
+                        sbChartScrubber.progress = selectedIndex
+                        lineChart.post {
+                            lineChart.highlightValue(
+                                Highlight(lastHighlightedX ?: 0f, 0, 0),
+                                false
+                            )
+                        }
+                    }
+                }
 
                 val firstTimestamp = records.first().timestamp
                 val lastTimestamp = records.last().timestamp
@@ -758,7 +802,7 @@ class MainActivity : AppCompatActivity() {
                     lineChart.setVisibleXRangeMaximum(fifteenMins)
                     
                     // Only auto-scroll to end if not currently scrubbing or selecting a point
-                    if (!isDraggingScrubber && lineChart.highlighted.isNullOrEmpty()) {
+                    if (!isDraggingScrubber && selectedRecordTimestamp == null) {
                         if (durationFloat > fifteenMins) {
                             this@MainActivity.lineChart.moveViewToX(/* xValue = */ durationFloat - fifteenMins)
                         } else {
@@ -782,45 +826,134 @@ class MainActivity : AppCompatActivity() {
         tvCurrentMaxPower.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
     }
 
-    private fun updateStatusTitle(isSelected: Boolean, record: ChargeRecord? = null) {
-        val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
-        val baseTitle = if (historySessionId != -1L) {
-            getString(R.string.viewing_history)
-        } else {
-            if (isRecording()) getString(R.string.recording) else getString(R.string.stopped)
+    private fun selectedRecordIndex(): Int? =
+        selectedRecordTimestamp?.let { timestamp ->
+            currentRecords.indexOfFirst { it.timestamp == timestamp }.takeIf { it >= 0 }
         }
-        
+
+    private fun selectedRecord(): ChargeRecord? =
+        selectedRecordIndex()?.let { currentRecords[it] }
+
+    private fun refreshRealtimeStatusFromBroadcast() {
+        val batteryStatusIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        if (batteryStatusIntent == null) {
+            updateStatusTitle(false, realtimeState = BatteryDisplayState.IDLE)
+            return
+        }
+        val batteryStatus = batteryStatusIntent.getIntExtra(
+            BatteryManager.EXTRA_STATUS,
+            BatteryManager.BATTERY_STATUS_UNKNOWN
+        )
+        val batteryLevel = BatteryUtils.getBatteryLevel(this, batteryStatusIntent)
+        val current = BatteryUtils.getCurrent(this, batteryStatusIntent)
+        updateStatusTitle(
+            false,
+            realtimeState = BatteryFlow.displayState(batteryStatus, current, batteryLevel)
+        )
+    }
+
+    private fun refreshStatusForCurrentMode() {
+        val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
+        if (historySessionId != -1L) {
+            selectedRecord()?.let { updateStatusTitle(true, it) }
+                ?: updateStatusTitle(false)
+            return
+        }
+
+        selectedRecord()?.let {
+            updateStatusTitle(true, it)
+            return
+        }
+
+        if (isRecording()) {
+            currentRecords.lastOrNull()?.let { updateStatusTitle(false, it) }
+                ?: refreshRealtimeStatusFromBroadcast()
+        } else {
+            refreshRealtimeStatusFromBroadcast()
+        }
+    }
+
+    private fun statusLabel(state: BatteryDisplayState): String = when (state) {
+        BatteryDisplayState.CHARGING -> getString(R.string.status_charging)
+        BatteryDisplayState.DISCHARGING -> getString(R.string.status_discharging)
+        BatteryDisplayState.FULL -> getString(R.string.status_full)
+        BatteryDisplayState.IDLE -> getString(R.string.status_idle)
+    }
+
+    private fun applyStatusBadgeStyle(state: BatteryDisplayState?, selected: Boolean) {
+        val backgroundRes = when {
+            selected -> R.color.status_selected_bg
+            state == BatteryDisplayState.CHARGING -> R.color.status_charging_bg
+            state == BatteryDisplayState.DISCHARGING -> R.color.status_discharging_bg
+            state == BatteryDisplayState.FULL -> R.color.status_full_bg
+            else -> R.color.status_idle_bg
+        }
+        val textRes = when {
+            selected -> R.color.status_selected_text
+            state == BatteryDisplayState.CHARGING -> R.color.status_charging_text
+            state == BatteryDisplayState.DISCHARGING -> R.color.status_discharging_text
+            state == BatteryDisplayState.FULL -> R.color.status_full_text
+            else -> R.color.status_idle_text
+        }
+        tvStatus.background = GradientDrawable().apply {
+            setColor(ContextCompat.getColor(this@MainActivity, backgroundRes))
+            cornerRadius = 19f * resources.displayMetrics.density
+        }
+        tvStatus.setTextColor(ContextCompat.getColor(this, textRes))
+    }
+
+    private fun setStatusTextWithPin(title: String) {
+        val spannable = android.text.SpannableStringBuilder(title)
+        spannable.append("  ")
+        val start = title.length + 1
+        val drawable = ContextCompat.getDrawable(this, R.drawable.ic_selected_pin)
+        if (drawable != null) {
+            val sizePx = (18 * resources.displayMetrics.density).toInt()
+            drawable.setBounds(0, 0, sizePx, sizePx)
+            val imageSpan = android.text.style.ImageSpan(
+                drawable,
+                android.text.style.ImageSpan.ALIGN_CENTER
+            )
+            spannable.setSpan(
+                imageSpan,
+                start,
+                start + 1,
+                android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+        tvStatus.text = spannable
+    }
+
+    private fun updateStatusTitle(
+        isSelected: Boolean = false,
+        record: ChargeRecord? = null,
+        realtimeState: BatteryDisplayState? = null
+    ) {
+        val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
         if (isSelected && record != null) {
             val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(record.timestamp))
-            val selectedTitle = if (historySessionId != -1L) {
-                getString(R.string.title_viewing_history_selected, timeStr)
-            } else {
-                if (isRecording()) {
-                    getString(R.string.title_recording_selected, timeStr)
-                } else {
-                    getString(R.string.title_stopped_selected, timeStr)
-                }
-            }
-            val spannable = android.text.SpannableStringBuilder(selectedTitle)
-            spannable.append("  ") // Two spaces: one for spacing, one as target for the ImageSpan
-            val start = selectedTitle.length + 1
-            
-            val drawable = ContextCompat.getDrawable(this, R.drawable.ic_selected_pin)
-            if (drawable != null) {
-                val sizePx = (18 * resources.displayMetrics.density).toInt()
-                drawable.setBounds(0, 0, sizePx, sizePx)
-                val imageSpan = android.text.style.ImageSpan(drawable, android.text.style.ImageSpan.ALIGN_CENTER)
-                spannable.setSpan(
-                    imageSpan,
-                    start,
-                    start + 1,
-                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-            tvStatus.text = spannable
-        } else {
-            tvStatus.text = baseTitle
+            val title = getString(R.string.title_selected_live, timeStr)
+            setStatusTextWithPin(title)
+            applyStatusBadgeStyle(null, selected = true)
+            return
         }
+
+        if (historySessionId != -1L) {
+            tvStatus.text = getString(R.string.viewing_history)
+            applyStatusBadgeStyle(BatteryDisplayState.IDLE, selected = false)
+            return
+        }
+
+        val state = realtimeState ?: record?.let {
+            BatteryFlow.displayState(it.batteryStatus, it.current, it.batteryLevel)
+        } ?: BatteryDisplayState.IDLE
+        val suffix = if (isRecording()) {
+            getString(R.string.status_recording_suffix)
+        } else {
+            getString(R.string.status_not_recording_suffix)
+        }
+        tvStatus.text = getString(R.string.status_live_format, statusLabel(state), suffix)
+        applyStatusBadgeStyle(state, selected = false)
     }
 
     private fun formatValueText(label: String, value: String, unit: String, color: Int): android.text.SpannableString {
@@ -1294,10 +1427,10 @@ class MainActivity : AppCompatActivity() {
         lineChart.data = lineData
         lineChart.notifyDataSetChanged()
         lineChart.invalidate()
-        updatePowerTabSummary()
+        updatePowerTabSummary(selectedRecordIndex())
     }
 
-    private fun updatePowerTabSummary(targetIndex: Int = -1) {
+    private fun updatePowerTabSummary(targetIndex: Int? = null) {
         if (!::layoutPowerSummaryBanner.isInitialized || !::tvPowerSummaryText.isInitialized) return
         if (selectedTabIndex != 2 || currentRecords.isEmpty()) {
             layoutPowerSummaryBanner.visibility = View.GONE
@@ -1305,7 +1438,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         val firstRecord = currentRecords.first()
-        val endIndex = if (targetIndex in currentRecords.indices) targetIndex else currentRecords.size - 1
+        val selectedIndex = selectedRecordIndex()
+        val endIndex = when {
+            targetIndex != null && targetIndex in currentRecords.indices -> targetIndex
+            selectedIndex != null -> selectedIndex
+            else -> currentRecords.size - 1
+        }
         val targetRecord = currentRecords[endIndex]
 
         val startBat = firstRecord.batteryLevel
@@ -1317,7 +1455,7 @@ class MainActivity : AppCompatActivity() {
         val netMah = energy.netMah
         val netWh = energy.netWh
 
-        val isSelected = targetIndex in currentRecords.indices && targetIndex < currentRecords.size - 1
+        val isSelected = selectedIndex != null && selectedIndex == endIndex
         val isDischarging = netMah < -0.5 || (netMah in -0.5..0.5 && batChange < 0)
 
         val mahWhStr = if (abs(netMah) > 0.5) {
@@ -1484,29 +1622,51 @@ class MainActivity : AppCompatActivity() {
         liveTextUpdateJob = lifecycleScope.launch {
             while (true) {
                 val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
-                if (historySessionId == -1L && !isRecording()) {
-                    // Update only if no active chart selection
-                    if (lineChart.highlighted.isNullOrEmpty()) {
-                        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-                        val batteryStatus = registerReceiver(null, filter)
-                        if (batteryStatus != null) {
-                            val voltage = BatteryUtils.getVoltage(batteryStatus)
-                            val current = BatteryUtils.getCurrent(this@MainActivity, batteryStatus)
-                            val power = BatteryFlow.signedPowerWatts(voltage, current)
-                            val batteryLevel = BatteryUtils.getBatteryLevel(this@MainActivity)
-                            
+                if (historySessionId == -1L && selectedRecordTimestamp == null) {
+                    val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+                    val batteryStatus = registerReceiver(null, filter)
+                    if (batteryStatus != null) {
+                        val batteryStatusValue = batteryStatus.getIntExtra(
+                            BatteryManager.EXTRA_STATUS,
+                            BatteryManager.BATTERY_STATUS_UNKNOWN
+                        )
+                        val voltage = BatteryUtils.getVoltage(batteryStatus)
+                        val current = BatteryUtils.getCurrent(this@MainActivity, batteryStatus)
+                        val power = BatteryFlow.signedPowerWatts(voltage, current)
+                        val batteryLevel = BatteryUtils.getBatteryLevel(this@MainActivity, batteryStatus)
+                        val displayState = BatteryFlow.displayState(
+                            batteryStatusValue,
+                            current,
+                            batteryLevel
+                        )
+
+                        if (isRecording()) {
+                            // During recording the latest database sample is authoritative.
+                            refreshStatusForCurrentMode()
+                        } else {
+                            updateStatusTitle(false, realtimeState = displayState)
                             resetDashboardTextSize()
                             val valV = String.format(Locale.getDefault(), "%.2f", voltage)
                             val valC = String.format(Locale.getDefault(), "%.2f", current)
                             val valP = String.format(Locale.getDefault(), "%.2f", power)
                             val valB = String.format(Locale.getDefault(), "%d", batteryLevel)
-                            
-                            tvCurrentVoltage.text = formatValueText(getString(R.string.voltage_label), valV, "V", colorRealtime)
-                            tvCurrentCurrent.text = formatValueText(getString(R.string.current_label), valC, "A", colorRealtime)
-                            tvCurrentPower.text = formatValueText(getString(R.string.power_label), valP, "W", colorRealtime)
-                            tvCurrentProtocol.text = formatValueText(getString(R.string.battery_label), valB, "%", colorRealtime)
+
+                            tvCurrentVoltage.text = formatValueText(
+                                getString(R.string.voltage_label), valV, "V", colorRealtime
+                            )
+                            tvCurrentCurrent.text = formatValueText(
+                                getString(R.string.current_label), valC, "A", colorRealtime
+                            )
+                            tvCurrentPower.text = formatValueText(
+                                getString(R.string.power_label), valP, "W", colorRealtime
+                            )
+                            tvCurrentProtocol.text = formatValueText(
+                                getString(R.string.battery_label), valB, "%", colorRealtime
+                            )
                             updateMaxChargingLimitText(batteryStatus)
                         }
+                    } else {
+                        updateStatusTitle(false, realtimeState = BatteryDisplayState.IDLE)
                     }
                 }
                 kotlinx.coroutines.delay(1000L.milliseconds)
@@ -1557,7 +1717,7 @@ class MainActivity : AppCompatActivity() {
         menuInflater.inflate(R.menu.menu_main, menu)
         
         menuDeleteSegment = menu.findItem(R.id.menu_delete_segment)
-        menuDeleteSegment?.isVisible = lineChart.highlighted?.isNotEmpty() == true
+        menuDeleteSegment?.isVisible = selectedRecordTimestamp != null
         
         // Hide theme/language options if we are viewing historical details
         val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
@@ -1592,11 +1752,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         if (item.itemId == R.id.menu_delete_segment) {
-            val highlight = lineChart.highlighted?.firstOrNull() ?: return true
-            val targetTime = chartBaseTime + highlight.x.toLong()
-            val index = currentRecords.indices.minByOrNull { abs(currentRecords[it].timestamp - targetTime) } ?: -1
-            if (index == -1) return true
-            val record = currentRecords[index]
+            val record = selectedRecord() ?: return true
 
             val timeStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(record.timestamp))
             val options = arrayOf(
@@ -1621,7 +1777,7 @@ class MainActivity : AppCompatActivity() {
                                 repo.deleteSingleRecord(sessionStart, record.timestamp)
                             }
                         }
-                        lineChart.highlightValue(null, true)
+                        clearChartSelection()
                     }
                 }
                 .setNegativeButton(R.string.cancel, null)
@@ -1664,6 +1820,7 @@ class MainActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putInt("SELECTED_TAB_INDEX", selectedTabIndex)
+        selectedRecordTimestamp?.let { outState.putLong("SELECTED_RECORD_TIMESTAMP", it) }
         outState.putBoolean("MAX_CHARGING_LIMIT_VISIBLE", maxChargingLimitTargetVisible)
         maxChargingLimitVoltage?.let { outState.putFloat("MAX_CHARGING_LIMIT_VOLTAGE", it) }
         maxChargingLimitCurrent?.let { outState.putFloat("MAX_CHARGING_LIMIT_CURRENT", it) }

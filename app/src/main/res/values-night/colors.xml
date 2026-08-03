@@ -32,4 +32,19 @@
     <color name="status_recording_text">#69F0AE</color>
     <color name="status_stopped_bg">#2D3748</color>
     <color name="status_stopped_text">#94A3B8</color>
+    <color name="status_charging_bg">#1B382B</color>
+    <color name="status_charging_text">#69F0AE</color>
+    <color name="status_discharging_bg">#4A1F27</color>
+    <color name="status_discharging_text">#FF9AA2</color>
+    <color name="status_full_bg">#17364A</color>
+    <color name="status_full_text">#7DD3FC</color>
+    <color name="status_idle_bg">#2D3748</color>
+    <color name="status_idle_text">#94A3B8</color>
+    <color name="status_selected_bg">#4A3410</color>
+    <color name="status_selected_text">#FFAB40</color>
+
+    <!-- AndroidX RecyclerView fast scroller -->
+    <color name="fast_scroll_thumb">#64748B</color>
+    <color name="fast_scroll_thumb_pressed">#CBD5E1</color>
+    <color name="fast_scroll_track">#3364758B</color>
 </resources>

@@ -73,7 +73,7 @@
     <string name="health_rated_capacity_hint">额定容量 (mAh)</string>
     <string name="health_invalid_rated_capacity">请输入 300–30000 mAh 之间的有效额定容量</string>
     <string name="health_calculate">计算</string>
-    <string name="health_need_more_data">有效充电跨度累计 %1$d%%，至少需要 50%%。请增加选择或选择更完整的记录。</string>
+    <string name="health_low_span_warning">本次累计有效充电跨度仅 %1$d%%，估算可信度较低；建议选择更多或更完整的充电记录。</string>
     <string name="health_invalid_data">所选记录存在中断、放电或异常采样，无法可靠估算。</string>
     <string name="health_result_with_rating">估算满充容量: %1$.0f mAh\n额定容量: %2$.0f mAh\n电池健康度: %3$.1f%%\n累计有效充电跨度: %4$d%%\n可信度: %5$s</string>
     <string name="health_result_without_rating">估算满充容量: %1$.0f mAh\n累计有效充电跨度: %2$d%%\n可信度: %3$s\n\n未取得额定容量，暂时无法计算健康度。请返回后填写额定容量。</string>
@@ -86,7 +86,7 @@
     <string name="health_status_known">电池状态: 新记录已包含系统充电/满电状态</string>
     <string name="health_status_unknown">电池状态: 包含缺少状态的旧记录</string>
     <string name="health_legacy_full_tail_notice" formatted="false">该记录缺少满电状态，100% 后数据已全部参与计算；请先裁剪至你认为合适的终点。旧记录中已保存为正值的电流无法恢复原始符号，现有负值已正常扣减。</string>
-    <string name="health_signed_result_notice">这是基于电池端有符号净电流积分的估算值；正电流计入、负电流扣减。新记录积分到首次系统 FULL 状态，旧记录按用户保留的全部数据计算。</string>
+    <string name="health_signed_result_notice" formatted="false">这是基于电池端有符号净电流积分的估算值；正电流计入、负电流扣减。新记录积分到首个“FULL 且电量 100%”状态，旧记录按用户保留的全部数据计算。</string>
     <string name="table_battery_status">状态</string>
     <string name="battery_status_charging">充电</string>
     <string name="battery_status_full">已充满（涓流维持）</string>
@@ -155,6 +155,14 @@
     <string name="title_viewing_history_selected">历史 · %s</string>
     <string name="title_recording_selected">记录 · %s</string>
     <string name="title_stopped_selected">停止 · %s</string>
+    <string name="title_selected_live">选中 %s · 非实时 · 点击返回</string>
+    <string name="status_live_format">%1$s · %2$s</string>
+    <string name="status_charging">正在充电</string>
+    <string name="status_discharging">正在放电</string>
+    <string name="status_full">已充满</string>
+    <string name="status_idle">未充电</string>
+    <string name="status_recording_suffix">记录中</string>
+    <string name="status_not_recording_suffix">未记录</string>
     <string name="import_history">导入</string>
 
     <!-- Power Chart Charged Energy Summary -->

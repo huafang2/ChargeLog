@@ -2,6 +2,7 @@ package per.jau.chargelog.utils
 
 import android.os.BatteryManager
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BatteryFlowTest {
@@ -65,6 +66,20 @@ class BatteryFlowTest {
             0.001f
         )
     }
+    @Test
+    fun fullIsConfirmedOnlyAtOneHundredPercent() {
+        assertTrue(BatteryFlow.isConfirmedFull(BatteryManager.BATTERY_STATUS_FULL, 100))
+        assertTrue(!BatteryFlow.isConfirmedFull(BatteryManager.BATTERY_STATUS_FULL, 94))
+        assertEquals(
+            BatteryDisplayState.CHARGING,
+            BatteryFlow.displayState(BatteryManager.BATTERY_STATUS_FULL, 0f, 94)
+        )
+        assertEquals(
+            BatteryDisplayState.FULL,
+            BatteryFlow.displayState(BatteryManager.BATTERY_STATUS_FULL, 0f, 100)
+        )
+    }
+
     @Test
     fun powerKeepsTheNetCurrentSign() {
         assertEquals(4f, BatteryFlow.signedPowerWatts(4f, 1f), 0.001f)

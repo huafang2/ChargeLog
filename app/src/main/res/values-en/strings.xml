@@ -73,7 +73,7 @@
     <string name="health_rated_capacity_hint">Rated capacity (mAh)</string>
     <string name="health_invalid_rated_capacity">Enter a valid rated capacity between 300 and 30000 mAh</string>
     <string name="health_calculate">Calculate</string>
-    <string name="health_need_more_data">Valid charging span totals %1$d%%; at least 50%% is required. Select more or more complete sessions.</string>
+    <string name="health_low_span_warning">Valid charging span totals only %1$d%%, so confidence is low. Select more or more complete charging sessions for a better estimate.</string>
     <string name="health_invalid_data">The selected sessions contain interruptions, discharge, or invalid samples and cannot be estimated reliably.</string>
     <string name="health_result_with_rating">Estimated full capacity: %1$.0f mAh\nRated capacity: %2$.0f mAh\nBattery health: %3$.1f%%\nTotal valid charging span: %4$d%%\nConfidence: %5$s</string>
     <string name="health_result_without_rating">Estimated full capacity: %1$.0f mAh\nTotal valid charging span: %2$d%%\nConfidence: %3$s\n\nRated capacity is unavailable, so battery health cannot be calculated yet. Go back and enter it manually.</string>
@@ -86,7 +86,7 @@
     <string name="health_status_known">Battery status: system charging/full status is available for the new records</string>
     <string name="health_status_unknown">Battery status: includes legacy records without status</string>
     <string name="health_legacy_full_tail_notice" formatted="false">This record has no full-status data, so all samples after 100% are included. Crop it at the endpoint you consider appropriate. Positive values already stored in legacy data cannot recover their original sign; existing negative values are subtracted normally.</string>
-    <string name="health_signed_result_notice">Estimated from signed net current at the battery: positive current is added and negative current is subtracted. New records stop at the first system FULL status; legacy records use all samples retained by the user.</string>
+    <string name="health_signed_result_notice" formatted="false">Estimated from signed net current at the battery: positive current is added and negative current is subtracted. New records stop at the first FULL status at 100% battery level; legacy records use all samples retained by the user.</string>
     <string name="table_battery_status">Status</string>
     <string name="battery_status_charging">Charging</string>
     <string name="battery_status_full">Full (Trickle)</string>
@@ -155,6 +155,14 @@
     <string name="title_viewing_history_selected">History · %s</string>
     <string name="title_recording_selected">Recording · %s</string>
     <string name="title_stopped_selected">Stopped · %s</string>
+    <string name="title_selected_live">Selected %s · Not live · Tap to return</string>
+    <string name="status_live_format">%1$s · %2$s</string>
+    <string name="status_charging">Charging</string>
+    <string name="status_discharging">Discharging</string>
+    <string name="status_full">Full</string>
+    <string name="status_idle">Not charging</string>
+    <string name="status_recording_suffix">Recording</string>
+    <string name="status_not_recording_suffix">Not recording</string>
     <string name="import_history">Import</string>
     <string name="export_history">Export</string>
     <string name="export_success">History records exported successfully</string>

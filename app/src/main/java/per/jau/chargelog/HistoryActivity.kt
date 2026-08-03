@@ -265,10 +265,6 @@ class HistoryActivity : AppCompatActivity() {
 
     private fun showHealthResult(result: BatteryHealthResult, ratedCapacityMah: Float?) {
         val message = when (result) {
-            is BatteryHealthResult.Insufficient -> getString(
-                R.string.health_need_more_data,
-                result.totalBatterySpanPercent
-            )
             BatteryHealthResult.Invalid -> getString(R.string.health_invalid_net_data)
             is BatteryHealthResult.Ready -> {
                 val estimate = result.estimate
@@ -315,6 +311,14 @@ class HistoryActivity : AppCompatActivity() {
                             }
                         )
                     )
+                    if (estimate.totalBatterySpanPercent <= BatteryHealthEstimator.LOW_CONFIDENCE_SPAN_PERCENT) {
+                        append(
+                            "\n\n${getString(
+                                R.string.health_low_span_warning,
+                                estimate.totalBatterySpanPercent
+                            )}"
+                        )
+                    }
                     if (estimate.hasLegacyFullTail) {
                         append("\n\n${getString(R.string.health_legacy_full_tail_notice)}")
                     }

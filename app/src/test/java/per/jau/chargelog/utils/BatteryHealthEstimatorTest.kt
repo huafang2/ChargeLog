@@ -22,13 +22,56 @@ class BatteryHealthEstimatorTest {
     }
 
     @Test
-    fun requiresFiftyPercentOfCombinedChargingSpan() {
+    fun computesBelowFiftyPercentWithLowConfidence() {
         val result = BatteryHealthEstimator.estimate(
             listOf(session(1L, startLevel = 20, endLevel = 49)),
             5000f
         )
 
-        assertEquals(BatteryHealthResult.Insufficient(29), result)
+        assertTrue(result is BatteryHealthResult.Ready)
+        val estimate = (result as BatteryHealthResult.Ready).estimate
+        assertEquals(29, estimate.totalBatterySpanPercent)
+        assertEquals(BatteryHealthEstimate.Confidence.LOW, estimate.confidence)
+    }
+
+    @Test
+    fun positiveSpansAtAndBelowFiftyRemainCalculable() {
+        val cases = listOf(
+            1 to BatteryHealthEstimate.Confidence.LOW,
+            50 to BatteryHealthEstimate.Confidence.LOW,
+            51 to BatteryHealthEstimate.Confidence.MEDIUM
+        )
+
+        cases.forEach { (span, expectedConfidence) ->
+            val result = BatteryHealthEstimator.estimate(
+                listOf(session(span.toLong(), startLevel = 20, endLevel = 20 + span)),
+                4000f
+            )
+            assertTrue(result is BatteryHealthResult.Ready)
+            val estimate = (result as BatteryHealthResult.Ready).estimate
+            assertEquals(span, estimate.totalBatterySpanPercent)
+            assertEquals(expectedConfidence, estimate.confidence)
+        }
+    }
+
+    @Test
+    fun transientFullBelowOneHundredDoesNotStopChargingRun() {
+        val base = 15_000_000L
+        val records = listOf(
+            record(7L, base, 47, 0.585f, BatteryManager.BATTERY_STATUS_CHARGING),
+            record(7L, base + 3_600_000L, 70, 0.585f, BatteryManager.BATTERY_STATUS_CHARGING),
+            record(7L, base + 7_200_000L, 94, 0.585f, BatteryManager.BATTERY_STATUS_FULL),
+            record(7L, base + 10_800_000L, 94, 0.585f, BatteryManager.BATTERY_STATUS_CHARGING),
+            record(7L, base + 14_400_000L, 100, 0.585f, BatteryManager.BATTERY_STATUS_FULL),
+            record(7L, base + 18_000_000L, 100, 2f, BatteryManager.BATTERY_STATUS_FULL)
+        )
+
+        val result = BatteryHealthEstimator.estimate(listOf(records), 4900f)
+
+        assertTrue(result is BatteryHealthResult.Ready)
+        val estimate = (result as BatteryHealthResult.Ready).estimate
+        assertEquals(53, estimate.totalBatterySpanPercent)
+        assertEquals(90.1f, estimate.healthPercent!!, 0.5f)
     }
 
     @Test

@@ -48,6 +48,21 @@
     <color name="status_recording_text">#166534</color>
     <color name="status_stopped_bg">#F8FAFC</color>
     <color name="status_stopped_text">#64748B</color>
+    <color name="status_charging_bg">#F0FDF4</color>
+    <color name="status_charging_text">#166534</color>
+    <color name="status_discharging_bg">#FEE2E2</color>
+    <color name="status_discharging_text">#991B1B</color>
+    <color name="status_full_bg">#E0F2FE</color>
+    <color name="status_full_text">#075985</color>
+    <color name="status_idle_bg">#F8FAFC</color>
+    <color name="status_idle_text">#64748B</color>
+    <color name="status_selected_bg">#FEF3C7</color>
+    <color name="status_selected_text">#B45309</color>
+
+    <!-- AndroidX RecyclerView fast scroller -->
+    <color name="fast_scroll_thumb">#94A3B8</color>
+    <color name="fast_scroll_thumb_pressed">#475569</color>
+    <color name="fast_scroll_track">#3394A3B8</color>
 
     <!-- Button Background & Text Colors -->
     <color name="btn_bg_obsidian">#0F172A</color>
