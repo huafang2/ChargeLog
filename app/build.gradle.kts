@@ -18,7 +18,7 @@ android {
         targetSdk = 36
 
         versionCode = 24
-        versionName = "2.1.1"
+        versionName = "2.2"
         buildConfigField("String", "BUILD_DATE", "\"$chargeLogBuildDate\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
