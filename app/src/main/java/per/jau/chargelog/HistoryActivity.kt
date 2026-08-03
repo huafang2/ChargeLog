@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.View
 import android.widget.Button
+import android.widget.TextView
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
@@ -45,6 +46,9 @@ class HistoryActivity : AppCompatActivity() {
     private lateinit var adapter: HistoryAdapter
     private lateinit var btnClearAll: Button
     private lateinit var btnEstimateHealth: Button
+    private lateinit var btnDeleteSelected: Button
+    private var selectionActionsVisible = false
+    private var selectionActionAnimationToken = 0
 
     private val exportJsonLauncher = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -98,6 +102,13 @@ class HistoryActivity : AppCompatActivity() {
         btnClearAll = findViewById(R.id.btnClearAll)
         btnEstimateHealth = findViewById(R.id.btnEstimateHealth)
         btnEstimateHealth.setOnClickListener { beginHealthEstimate() }
+        btnDeleteSelected = findViewById(R.id.btnDeleteSelected)
+        btnDeleteSelected.setOnClickListener { confirmDeleteSelected() }
+        (btnClearAll.parent as? android.view.ViewGroup)?.layoutTransition?.apply {
+            setAnimator(android.animation.LayoutTransition.APPEARING, null)
+            setAnimator(android.animation.LayoutTransition.DISAPPEARING, null)
+        }
+
         btnClearAll.setOnClickListener {
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.dialog_clear_all_title)
@@ -153,12 +164,77 @@ class HistoryActivity : AppCompatActivity() {
                     .setNegativeButton(R.string.cancel, null)
                     .show()
             }
-        )
+        ) { selectedIds ->
+            updateSelectionActions(selectedIds.isNotEmpty())
+        }
         rvHistory.adapter = adapter
 
         loadHistory()
     }
 
+    private fun updateSelectionActions(hasSelection: Boolean) {
+        if (selectionActionsVisible == hasSelection) return
+        selectionActionsVisible = hasSelection
+        val token = ++selectionActionAnimationToken
+
+        if (hasSelection) {
+            prepareSelectionActionForAppearance(btnEstimateHealth)
+            prepareSelectionActionForAppearance(btnDeleteSelected)
+            btnClearAll.postDelayed({
+                if (token == selectionActionAnimationToken && selectionActionsVisible) {
+                    showSelectionAction(btnEstimateHealth)
+                    showSelectionAction(btnDeleteSelected)
+                }
+            }, 180)
+        } else {
+            hideSelectionActions(token)
+        }
+    }
+
+    private fun prepareSelectionActionForAppearance(button: View) {
+        button.animate().cancel()
+        button.visibility = View.VISIBLE
+        button.alpha = 0f
+        button.scaleX = 0.92f
+        button.scaleY = 0.92f
+    }
+
+    private fun showSelectionAction(button: View) {
+        button.visibility = View.VISIBLE
+        button.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(180)
+            .start()
+    }
+
+    private fun hideSelectionActions(token: Int) {
+        var completedAnimations = 0
+        fun hide(button: View) {
+            button.animate().cancel()
+            button.animate()
+                .alpha(0f)
+                .scaleX(0.92f)
+                .scaleY(0.92f)
+                .setDuration(150)
+                .withEndAction {
+                    if (token != selectionActionAnimationToken || selectionActionsVisible) return@withEndAction
+                    completedAnimations++
+                    if (completedAnimations == 2) {
+                        listOf(btnEstimateHealth, btnDeleteSelected).forEach { action ->
+                            action.visibility = View.GONE
+                            action.alpha = 1f
+                            action.scaleX = 1f
+                            action.scaleY = 1f
+                        }
+                    }
+                }
+                .start()
+        }
+        hide(btnEstimateHealth)
+        hide(btnDeleteSelected)
+    }
     override fun onCreateOptionsMenu(menu: android.view.Menu): Boolean {
         menuInflater.inflate(R.menu.menu_history, menu)
         return true
@@ -219,6 +295,52 @@ class HistoryActivity : AppCompatActivity() {
         exportJsonLauncher.launch(fileName)
     }
 
+    private fun confirmDeleteSelected() {
+        val selectedIds = adapter.selectedSessionIds()
+        if (selectedIds.isEmpty()) return
+
+        val prefs = getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE)
+        val activeSessionId = prefs.getLong(PrefKeys.CURRENT_SESSION_START, 0L)
+        val hasActiveSession = prefs.getBoolean(PrefKeys.IS_RECORDING, false) &&
+                activeSessionId in selectedIds
+        val messageRes = if (hasActiveSession) {
+            R.string.dialog_delete_selected_active_msg
+        } else {
+            R.string.dialog_delete_selected_msg
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.dialog_delete_selected_title)
+            .setMessage(getString(messageRes, selectedIds.size))
+            .setPositiveButton(
+                if (hasActiveSession) R.string.stop_and_delete else R.string.delete_selected
+            ) { _, _ ->
+                if (hasActiveSession) {
+                    prefs.edit {
+                        putBoolean(PrefKeys.IS_RECORDING, false)
+                        putBoolean(PrefKeys.FORCE_NEW_SESSION, true)
+                    }
+                    startForegroundService(Intent(this, ChargeLoggingService::class.java).apply {
+                        action = ChargeLoggingService.ACTION_STOP_RECORDING
+                    })
+                }
+                lifecycleScope.launch {
+                    val repo = ChargeRepository.getInstance(this@HistoryActivity)
+                    val deleted = selectedIds.sumOf { sessionId ->
+                        repo.deleteRecordsBySession(sessionId)
+                    }
+                    adapter.clearSelection()
+                    val message = if (deleted > 0) {
+                        getString(R.string.history_delete_success, deleted)
+                    } else {
+                        getString(R.string.history_delete_not_found)
+                    }
+                    Toast.makeText(this@HistoryActivity, message, Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
     private fun beginHealthEstimate() {
         val selectedIds = adapter.selectedSessionIds()
         if (selectedIds.isEmpty()) {
@@ -288,75 +410,69 @@ class HistoryActivity : AppCompatActivity() {
     }
 
     private fun showHealthResult(result: BatteryHealthResult, ratedCapacityMah: Float?) {
-        val message = when (result) {
-            BatteryHealthResult.Invalid -> getString(R.string.health_invalid_net_data)
-            is BatteryHealthResult.Ready -> {
-                val estimate = result.estimate
-                val confidence = when (estimate.confidence) {
-                    BatteryHealthEstimate.Confidence.HIGH -> getString(R.string.health_confidence_high)
-                    BatteryHealthEstimate.Confidence.MEDIUM -> getString(R.string.health_confidence_medium)
-                    BatteryHealthEstimate.Confidence.LOW -> getString(R.string.health_confidence_low)
-                }
-                val details = if (ratedCapacityMah != null && estimate.healthPercent != null) {
-                    getString(
-                        R.string.health_result_with_rating,
-                        estimate.estimatedFullCapacityMah,
-                        ratedCapacityMah,
-                        estimate.healthPercent,
-                        estimate.totalBatterySpanPercent,
-                        confidence
-                    )
-                } else {
-                    getString(
-                        R.string.health_result_without_rating,
-                        estimate.estimatedFullCapacityMah,
-                        estimate.totalBatterySpanPercent,
-                        confidence
-                    )
-                }
-                buildString {
-                    append(details)
-                    append("\n\n")
-                    append(
-                        getString(
-                            R.string.health_charge_breakdown,
-                            estimate.positiveChargedCapacityMah,
-                            estimate.dischargedCapacityMah,
-                            estimate.netChargedCapacityMah
-                        )
-                    )
-                    append("\n")
-                    append(
-                        getString(
-                            if (estimate.hasUnknownBatteryStatus) {
-                                R.string.health_status_unknown
-                            } else {
-                                R.string.health_status_known
-                            }
-                        )
-                    )
-                    if (estimate.totalBatterySpanPercent <= BatteryHealthEstimator.LOW_CONFIDENCE_SPAN_PERCENT) {
-                        append(
-                            "\n\n${getString(
-                                R.string.health_low_span_warning,
-                                estimate.totalBatterySpanPercent
-                            )}"
-                        )
-                    }
-                    if (estimate.hasLegacyFullTail) {
-                        append("\n\n${getString(R.string.health_legacy_full_tail_notice)}")
-                    }
-                    append("\n\n${getString(R.string.health_signed_result_notice)}")
-                }
-            }
+        if (result is BatteryHealthResult.Invalid) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.health_capacity_title)
+                .setMessage(R.string.health_invalid_net_data)
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+            return
         }
+
+        val estimate = (result as BatteryHealthResult.Ready).estimate
+        val confidence = when (estimate.confidence) {
+            BatteryHealthEstimate.Confidence.HIGH -> getString(R.string.health_confidence_high)
+            BatteryHealthEstimate.Confidence.MEDIUM -> getString(R.string.health_confidence_medium)
+            BatteryHealthEstimate.Confidence.LOW -> getString(R.string.health_confidence_low)
+        }
+        val dialogView = layoutInflater.inflate(R.layout.dialog_battery_health_result, null)
+        val healthPercent = estimate.healthPercent
+        dialogView.findViewById<TextView>(R.id.tvHealthPercent).text = healthPercent?.let {
+            getString(R.string.health_result_percent, it)
+        } ?: getString(R.string.health_result_unavailable)
+        dialogView.findViewById<TextView>(R.id.tvHealthCapacity).text = if (ratedCapacityMah != null) {
+            getString(
+                R.string.health_result_capacity_with_rating,
+                estimate.estimatedFullCapacityMah,
+                ratedCapacityMah
+            )
+        } else {
+            getString(R.string.health_result_capacity_without_rating, estimate.estimatedFullCapacityMah)
+        }
+        dialogView.findViewById<TextView>(R.id.tvHealthDetails).text = buildString {
+            append(getString(R.string.health_result_coverage_confidence, estimate.totalBatterySpanPercent, confidence))
+            append("\n")
+            append(
+                getString(
+                    R.string.health_charge_breakdown,
+                    estimate.positiveChargedCapacityMah,
+                    estimate.dischargedCapacityMah,
+                    estimate.netChargedCapacityMah
+                )
+            )
+        }
+        dialogView.findViewById<TextView>(R.id.tvHealthNotice).text = buildString {
+            if (healthPercent == null) append(getString(R.string.health_result_missing_rating_notice))
+            if (estimate.hasUnknownBatteryStatus) append(getString(R.string.health_status_unknown))
+            else append(getString(R.string.health_status_known))
+            if (estimate.totalBatterySpanPercent <= BatteryHealthEstimator.LOW_CONFIDENCE_SPAN_PERCENT) {
+                append("\n\n")
+                append(getString(R.string.health_low_span_warning, estimate.totalBatterySpanPercent))
+            }
+            if (estimate.hasLegacyFullTail) {
+                append("\n\n")
+                append(getString(R.string.health_legacy_full_tail_notice))
+            }
+            append("\n\n")
+            append(getString(R.string.health_signed_result_notice))
+        }
+
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.health_capacity_title)
-            .setMessage(message)
+            .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
             .show()
     }
-
     private fun writeHistoryJsonToUri(uri: android.net.Uri) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {

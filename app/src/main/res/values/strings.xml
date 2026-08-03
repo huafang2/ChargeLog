@@ -77,6 +77,14 @@
     <string name="health_invalid_data">所选记录存在中断、放电或异常采样，无法可靠估算。</string>
     <string name="health_result_with_rating">估算满充容量: %1$.0f mAh\n额定容量: %2$.0f mAh\n电池健康度: %3$.1f%%\n累计有效充电跨度: %4$d%%\n可信度: %5$s</string>
     <string name="health_result_without_rating">估算满充容量: %1$.0f mAh\n累计有效充电跨度: %2$d%%\n可信度: %3$s\n\n未取得额定容量，暂时无法计算健康度。请返回后填写额定容量。</string>
+    <string name="health_result_label">&#x7535;&#x6C60;&#x5065;&#x5EB7;&#x5EA6;</string>
+    <string name="health_result_percent">%1$.1f%%</string>
+    <string name="health_result_unavailable">&#x6682;&#x4E0D;&#x53EF;&#x8BA1;&#x7B97;</string>
+    <string name="health_result_capacity_with_rating">&#x4F30;&#x7B97;&#x6EE1;&#x5145;&#x5BB9;&#x91CF; %1$.0f mAh &#x00B7; &#x989D;&#x5B9A;&#x5BB9;&#x91CF; %2$.0f mAh</string>
+    <string name="health_result_capacity_without_rating">&#x4F30;&#x7B97;&#x6EE1;&#x5145;&#x5BB9;&#x91CF; %1$.0f mAh</string>
+    <string name="health_result_coverage_confidence">&#x6709;&#x6548;&#x8DE8;&#x5EA6; %1$d%% &#x00B7; &#x53EF;&#x4FE1;&#x5EA6; %2$s</string>
+    <string name="health_result_explanation_title">&#x4F30;&#x7B97;&#x8BF4;&#x660E;</string>
+    <string name="health_result_missing_rating_notice">&#x672A;&#x53D6;&#x5F97;&#x989D;&#x5B9A;&#x5BB9;&#x91CF;&#xFF0C;&#x56E0;&#x6B64;&#x6682;&#x4E0D;&#x80FD;&#x8BA1;&#x7B97;&#x5065;&#x5EB7;&#x5EA6;&#x3002;</string>
     <string name="health_confidence_high">高</string>
     <string name="health_confidence_medium">中</string>
     <string name="health_confidence_low">低</string>
@@ -96,6 +104,10 @@
     <string name="clear_all">清空所有</string>
     <string name="dialog_clear_all_title">清空所有历史数据</string>
     <string name="dialog_clear_all_msg">确定要清空所有充电历史记录吗？该操作无法恢复！</string>
+    <string name="delete_selected">&#x5220;&#x9664;&#x6240;&#x9009;</string>
+    <string name="dialog_delete_selected_title">&#x5220;&#x9664;&#x6240;&#x9009;&#x5386;&#x53F2;&#x8BB0;&#x5F55;</string>
+    <string name="dialog_delete_selected_msg">&#x786E;&#x5B9A;&#x8981;&#x5220;&#x9664;&#x5DF2;&#x9009;&#x7684; %1$d &#x6BB5;&#x5386;&#x53F2;&#x8BB0;&#x5F55;&#x5417;&#xFF1F;&#x6B64;&#x64CD;&#x4F5C;&#x65E0;&#x6CD5;&#x64A4;&#x9500;&#x3002;</string>
+    <string name="dialog_delete_selected_active_msg">&#x5DF2;&#x9009;&#x9879;&#x5305;&#x542B;&#x6B63;&#x5728;&#x8BB0;&#x5F55;&#x7684;&#x4F1A;&#x8BDD;&#x3002;&#x786E;&#x8BA4;&#x540E;&#x5C06;&#x505C;&#x6B62;&#x8BB0;&#x5F55;&#xFF0C;&#x5E76;&#x5220;&#x9664; %1$d &#x6BB5;&#x4F1A;&#x8BDD;&#x3002;&#x6B64;&#x64CD;&#x4F5C;&#x65E0;&#x6CD5;&#x64A4;&#x9500;&#x3002;</string>
     
     <string name="dialog_delete_session_title">删除历史记录</string>
     <string name="dialog_delete_session_msg">确定要删除这段充电历史记录吗？此操作无法撤销。</string>
@@ -191,4 +203,6 @@
     <string name="github_dialog_title">打开 GitHub 仓库</string>
     <string name="github_dialog_open">打开</string>
     <string name="github_dialog_reset">返回</string>
+    <string name="delete_selected_action">&#x5220;&#x9664;&#x5DF2;&#x9009;</string>
+    <string name="clear_history_action">&#x6E05;&#x7A7A;&#x5386;&#x53F2;</string>
 </resources>

@@ -77,6 +77,14 @@
     <string name="health_invalid_data">The selected sessions contain interruptions, discharge, or invalid samples and cannot be estimated reliably.</string>
     <string name="health_result_with_rating">Estimated full capacity: %1$.0f mAh\nRated capacity: %2$.0f mAh\nBattery health: %3$.1f%%\nTotal valid charging span: %4$d%%\nConfidence: %5$s</string>
     <string name="health_result_without_rating">Estimated full capacity: %1$.0f mAh\nTotal valid charging span: %2$d%%\nConfidence: %3$s\n\nRated capacity is unavailable, so battery health cannot be calculated yet. Go back and enter it manually.</string>
+    <string name="health_result_label">Battery health</string>
+    <string name="health_result_percent">%1$.1f%%</string>
+    <string name="health_result_unavailable">Unavailable</string>
+    <string name="health_result_capacity_with_rating">Estimated full capacity %1$.0f mAh ? Rated capacity %2$.0f mAh</string>
+    <string name="health_result_capacity_without_rating">Estimated full capacity %1$.0f mAh</string>
+    <string name="health_result_coverage_confidence">Valid span %1$d%% ? Confidence %2$s</string>
+    <string name="health_result_explanation_title">Estimate notes</string>
+    <string name="health_result_missing_rating_notice">Rated capacity is unavailable, so battery health cannot be calculated yet.</string>
     <string name="health_confidence_high">High</string>
     <string name="health_confidence_medium">Medium</string>
     <string name="health_confidence_low">Low</string>
@@ -96,6 +104,10 @@
     <string name="clear_all">Clear All</string>
     <string name="dialog_clear_all_title">Clear All History</string>
     <string name="dialog_clear_all_msg">Are you sure you want to clear all history records? This cannot be undone!</string>
+    <string name="delete_selected">Delete Selected</string>
+    <string name="dialog_delete_selected_title">Delete Selected History</string>
+    <string name="dialog_delete_selected_msg">Delete the %1$d selected history sessions? This cannot be undone.</string>
+    <string name="dialog_delete_selected_active_msg">The selection includes the active recording. Confirming will stop it and delete the %1$d selected history sessions. This cannot be undone.</string>
     
     <string name="dialog_delete_session_title">Delete History Record</string>
     <string name="dialog_delete_session_msg">Are you sure you want to delete this history record? This cannot be undone.</string>
@@ -190,4 +202,6 @@
     <string name="power_charged_mah_wh"> · ~%1$dmAh / %2$sWh</string>
     <string name="power_peak_charge">Peak charge %.1f W</string>
     <string name="power_peak_discharge">Peak discharge %.1f W</string>
+    <string name="delete_selected_action">Delete Selected</string>
+    <string name="clear_history_action">Clear History</string>
 </resources>

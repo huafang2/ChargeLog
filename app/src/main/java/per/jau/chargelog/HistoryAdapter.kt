@@ -26,7 +26,8 @@ data class ChargeSession(
 /** 历史记录列表 Adapter。 */
 class HistoryAdapter(
     private val onClick: (ChargeSession) -> Unit,
-    private val onLongClick: (ChargeSession) -> Unit
+    private val onLongClick: (ChargeSession) -> Unit,
+    private val onSelectionChanged: (Set<Long>) -> Unit
 ) : RecyclerView.Adapter<HistoryAdapter.ViewHolder>() {
 
     private var sessions = listOf<ChargeSession>()
@@ -35,10 +36,20 @@ class HistoryAdapter(
     fun selectedSessionIds(): Set<Long> = selectedIds.toSet()
 
     @SuppressLint("NotifyDataSetChanged")
+    fun clearSelection() {
+        if (selectedIds.isEmpty()) return
+        selectedIds.clear()
+        notifyDataSetChanged()
+        onSelectionChanged(emptySet())
+    }
+
+    @SuppressLint("NotifyDataSetChanged")
     fun submitList(list: List<ChargeSession>) {
         sessions = list
+        val previousSelection = selectedIds.toSet()
         selectedIds.retainAll(list.mapTo(mutableSetOf()) { it.sessionId })
         notifyDataSetChanged()
+        if (previousSelection != selectedIds) onSelectionChanged(selectedSessionIds())
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -97,6 +108,7 @@ class HistoryAdapter(
         holder.checkHealthSelection.isChecked = session.sessionId in selectedIds
         holder.checkHealthSelection.setOnCheckedChangeListener { _, checked ->
             if (checked) selectedIds.add(session.sessionId) else selectedIds.remove(session.sessionId)
+            onSelectionChanged(selectedSessionIds())
         }
 
         holder.itemView.setOnClickListener {

@@ -27,13 +27,18 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
+        android:animateLayoutChanges="true"
         android:gravity="end|center_vertical"
         android:layout_marginBottom="12dp">
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnEstimateHealth"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="40dp"
+            android:layout_weight="1"
+            android:minWidth="0dp"
+            android:paddingHorizontal="8dp"
+            android:visibility="gone"
             android:text="@string/estimate_battery_health"
             android:textSize="12sp"
             android:textStyle="bold"
@@ -45,17 +50,38 @@
             android:layout_marginEnd="8dp" />
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnClearAll"
-            android:layout_width="wrap_content"
+            android:id="@+id/btnDeleteSelected"
+            android:layout_width="0dp"
             android:layout_height="40dp"
-            android:text="@string/clear_all"
+            android:layout_weight="1"
+            android:minWidth="0dp"
+            android:paddingHorizontal="8dp"
+            android:visibility="gone"
+            android:text="@string/delete_selected_action"
             android:textSize="12sp"
             android:textStyle="bold"
             android:insetTop="0dp"
             android:insetBottom="0dp"
             app:cornerRadius="20dp"
             app:backgroundTint="@color/btn_bg_rose_light"
-            android:textColor="@color/btn_text_danger" />
+            android:textColor="@color/btn_text_danger"
+            android:layout_marginEnd="8dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnClearAll"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:minWidth="0dp"
+            android:paddingHorizontal="8dp"
+            android:text="@string/clear_history_action"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:cornerRadius="20dp"
+            app:backgroundTint="@color/color_accent_red"
+            android:textColor="@color/white" />
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
