@@ -11,10 +11,22 @@ data class BatteryHealthEstimate(
     val totalBatterySpanPercent: Int,
     val healthPercent: Float?,
     val confidence: Confidence,
+    val acceptedSessionCount: Int,
+    val confidenceReasons: List<ConfidenceReason>,
     val hasUnknownBatteryStatus: Boolean,
     val hasLegacyFullTail: Boolean
 ) {
     enum class Confidence { LOW, MEDIUM, HIGH }
+
+    enum class ConfidenceReason {
+        LIMITED_COVERAGE,
+        SAMPLING_GAPS,
+        LEGACY_FULL_TAIL,
+        OUTLIER_HEALTH_VALUE,
+        NEEDS_MORE_COVERAGE,
+        NEEDS_MORE_SESSIONS,
+        COMPLETE_MULTI_SESSION_COVERAGE
+    }
 }
 
 sealed class BatteryHealthResult {
@@ -161,6 +173,22 @@ object BatteryHealthEstimator {
             else -> BatteryHealthEstimate.Confidence.MEDIUM
         }
 
+        val confidenceReasons = when (confidence) {
+            BatteryHealthEstimate.Confidence.LOW -> buildList {
+                if (hasGap) add(BatteryHealthEstimate.ConfidenceReason.SAMPLING_GAPS)
+                if (hasLegacyFullTail) add(BatteryHealthEstimate.ConfidenceReason.LEGACY_FULL_TAIL)
+                if (totalSpan <= LOW_CONFIDENCE_SPAN_PERCENT) add(BatteryHealthEstimate.ConfidenceReason.LIMITED_COVERAGE)
+                if (health != null && health !in 65f..135f) add(BatteryHealthEstimate.ConfidenceReason.OUTLIER_HEALTH_VALUE)
+            }
+            BatteryHealthEstimate.Confidence.MEDIUM -> listOf(
+                if (totalSpan < 100) BatteryHealthEstimate.ConfidenceReason.NEEDS_MORE_COVERAGE
+                else BatteryHealthEstimate.ConfidenceReason.NEEDS_MORE_SESSIONS
+            )
+            BatteryHealthEstimate.Confidence.HIGH -> listOf(
+                BatteryHealthEstimate.ConfidenceReason.COMPLETE_MULTI_SESSION_COVERAGE
+            )
+        }
+
         return BatteryHealthResult.Ready(
             BatteryHealthEstimate(
                 estimatedFullCapacityMah = estimatedFullMah,
@@ -170,6 +198,8 @@ object BatteryHealthEstimator {
                 totalBatterySpanPercent = totalSpan,
                 healthPercent = health,
                 confidence = confidence,
+                acceptedSessionCount = acceptedSessions,
+                confidenceReasons = confidenceReasons,
                 hasUnknownBatteryStatus = hasUnknownStatus,
                 hasLegacyFullTail = hasLegacyFullTail
             )

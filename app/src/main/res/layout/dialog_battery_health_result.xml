@@ -3,7 +3,10 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingTop="8dp">
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
+    android:paddingStart="24dp"
+    android:paddingEnd="24dp">
 
     <TextView
         android:layout_width="match_parent"
@@ -44,9 +47,16 @@
         android:textSize="14sp" />
 
     <TextView
+        android:id="@+id/tvHealthConfidenceReason"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="12dp"
+        android:lineSpacingExtra="2dp"
+        android:textSize="13sp" />
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
         android:text="@string/health_result_explanation_title"
         android:textColor="?android:attr/textColorSecondary"
         android:textSize="12sp"

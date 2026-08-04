@@ -74,7 +74,21 @@
     <string name="health_invalid_rated_capacity">请输入 300–30000 mAh 之间的有效额定容量</string>
     <string name="health_calculate">计算</string>
     <string name="health_low_span_warning">本次累计有效充电跨度仅 %1$d%%，估算可信度较低；建议选择更多或更完整的充电记录。</string>
-    <string name="health_invalid_data">所选记录存在中断、放电或异常采样，无法可靠估算。</string>
+    <string name="health_result_span">有效跨度 %1$d%%</string>
+    <string name="health_result_net_charge">净充入量 %1$.1f mAh</string>
+    <string name="health_result_confidence">可信度：%1$s</string>
+    <string name="health_result_missing_rated_capacity_short">未设置额定容量，暂不能换算健康度百分比。</string>
+    <string name="health_confidence_reason_low">置信度低：%1$s</string>
+    <string name="health_confidence_reason_summary">置信度%1$s：%2$s</string>
+    <string name="health_confidence_reason_separator">；</string>
+    <string name="health_confidence_reason_limited_coverage">有效跨度仅为 %1$d%%</string>
+    <string name="health_confidence_reason_gap">包含采样中断，电量积分可能不完整</string>
+    <string name="health_confidence_reason_legacy_tail">包含旧记录的满电尾段，终点可信度有限</string>
+    <string name="health_confidence_reason_outlier">估算结果偏离合理范围</string>
+    <string name="health_confidence_reason_medium_coverage">累计有效跨度为 %1$d%%，补充完整充电可提高可信度</string>
+    <string name="health_confidence_reason_medium_sessions">累计跨度已达 %1$d%%，但仅包含 %2$d 次有效充电</string>
+    <string name="health_confidence_reason_high">累计有效跨度达 %1$d%%，包含 %2$d 次有效充电记录</string>
+    <string name="health_result_method_note">估算基于充电过程中的电流积分；仅在 FULL 且电量为 100%% 时视为确认满充。</string>    <string name="health_invalid_data">所选记录存在中断、放电或异常采样，无法可靠估算。</string>
     <string name="health_result_with_rating">估算满充容量: %1$.0f mAh\n额定容量: %2$.0f mAh\n电池健康度: %3$.1f%%\n累计有效充电跨度: %4$d%%\n可信度: %5$s</string>
     <string name="health_result_without_rating">估算满充容量: %1$.0f mAh\n累计有效充电跨度: %2$d%%\n可信度: %3$s\n\n未取得额定容量，暂时无法计算健康度。请返回后填写额定容量。</string>
     <string name="health_result_label">&#x7535;&#x6C60;&#x5065;&#x5EB7;&#x5EA6;</string>

@@ -51,6 +51,8 @@ class BatteryHealthEstimatorTest {
             val estimate = (result as BatteryHealthResult.Ready).estimate
             assertEquals(span, estimate.totalBatterySpanPercent)
             assertEquals(expectedConfidence, estimate.confidence)
+            val expectedReason = if (span <= 50) BatteryHealthEstimate.ConfidenceReason.LIMITED_COVERAGE else BatteryHealthEstimate.ConfidenceReason.NEEDS_MORE_COVERAGE
+            assertEquals(listOf(expectedReason), estimate.confidenceReasons)
         }
     }
 
@@ -143,6 +145,14 @@ class BatteryHealthEstimatorTest {
         assertEquals(6000f, estimate.estimatedFullCapacityMah, 0.5f)
         assertTrue(estimate.hasUnknownBatteryStatus)
         assertTrue(estimate.hasLegacyFullTail)
+        assertEquals(
+            listOf(
+                BatteryHealthEstimate.ConfidenceReason.LEGACY_FULL_TAIL,
+                BatteryHealthEstimate.ConfidenceReason.LIMITED_COVERAGE,
+                BatteryHealthEstimate.ConfidenceReason.OUTLIER_HEALTH_VALUE
+            ),
+            estimate.confidenceReasons
+        )
     }
 
     @Test
@@ -202,6 +212,53 @@ class BatteryHealthEstimatorTest {
         assertEquals(2000f, estimate.netChargedCapacityMah, 0.5f)
         assertEquals(4000f, estimate.estimatedFullCapacityMah, 0.5f)
         assertEquals(50, estimate.totalBatterySpanPercent)
+    }
+    @Test
+    fun highConfidenceExplainsCompleteMultiSessionCoverage() {
+        val first = sessionWithStatus(10L, 0, 50)
+        val second = sessionWithStatus(11L, 50, 100)
+
+        val result = BatteryHealthEstimator.estimate(listOf(first, second), 4000f)
+
+        assertTrue(result is BatteryHealthResult.Ready)
+        val estimate = (result as BatteryHealthResult.Ready).estimate
+        assertEquals(BatteryHealthEstimate.Confidence.HIGH, estimate.confidence)
+        assertEquals(2, estimate.acceptedSessionCount)
+        assertEquals(
+            listOf(BatteryHealthEstimate.ConfidenceReason.COMPLETE_MULTI_SESSION_COVERAGE),
+            estimate.confidenceReasons
+        )
+    }
+
+    @Test
+    fun samplingGapAndOutlierHealthAreBothReportedInPriorityOrder() {
+        val base = 70_000_000L
+        val records = listOf(
+            record(12L, base, 20, 1f, BatteryManager.BATTERY_STATUS_CHARGING),
+            record(12L, base + 3_600_000L, 30, 1f, BatteryManager.BATTERY_STATUS_CHARGING),
+            record(12L, base + 7_200_000L, 40, 1f, BatteryManager.BATTERY_STATUS_CHARGING),
+            record(12L, base + 72_000_000L, 70, 1f, BatteryManager.BATTERY_STATUS_CHARGING)
+        )
+
+        val result = BatteryHealthEstimator.estimate(listOf(records), 1000f)
+
+        assertTrue(result is BatteryHealthResult.Ready)
+        val estimate = (result as BatteryHealthResult.Ready).estimate
+        assertEquals(BatteryHealthEstimate.Confidence.LOW, estimate.confidence)
+        assertEquals(
+            listOf(
+                BatteryHealthEstimate.ConfidenceReason.SAMPLING_GAPS,
+                BatteryHealthEstimate.ConfidenceReason.LIMITED_COVERAGE,
+                BatteryHealthEstimate.ConfidenceReason.OUTLIER_HEALTH_VALUE
+            ),
+            estimate.confidenceReasons
+        )
+    }
+
+    private fun sessionWithStatus(id: Long, startLevel: Int, endLevel: Int): List<ChargeRecord> {
+        return session(id, startLevel, endLevel).map {
+            it.copy(batteryStatus = BatteryManager.BATTERY_STATUS_CHARGING)
+        }
     }
     private fun session(id: Long, startLevel: Int, endLevel: Int): List<ChargeRecord> {
         val span = endLevel - startLevel

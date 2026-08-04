@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
@@ -431,40 +432,35 @@ class HistoryActivity : AppCompatActivity() {
             getString(R.string.health_result_percent, it)
         } ?: getString(R.string.health_result_unavailable)
         dialogView.findViewById<TextView>(R.id.tvHealthCapacity).text = if (ratedCapacityMah != null) {
-            getString(
-                R.string.health_result_capacity_with_rating,
-                estimate.estimatedFullCapacityMah,
-                ratedCapacityMah
-            )
+            getString(R.string.health_result_capacity_with_rating, estimate.estimatedFullCapacityMah, ratedCapacityMah)
         } else {
             getString(R.string.health_result_capacity_without_rating, estimate.estimatedFullCapacityMah)
         }
         dialogView.findViewById<TextView>(R.id.tvHealthDetails).text = buildString {
-            append(getString(R.string.health_result_coverage_confidence, estimate.totalBatterySpanPercent, confidence))
+            append(getString(R.string.health_result_span, estimate.totalBatterySpanPercent))
             append("\n")
-            append(
-                getString(
-                    R.string.health_charge_breakdown,
-                    estimate.positiveChargedCapacityMah,
-                    estimate.dischargedCapacityMah,
-                    estimate.netChargedCapacityMah
-                )
-            )
+            append(getString(R.string.health_result_net_charge, estimate.netChargedCapacityMah))
+            append("\n")
+            append(getString(R.string.health_result_confidence, confidence))
         }
+        val reasonView = dialogView.findViewById<TextView>(R.id.tvHealthConfidenceReason)
+        reasonView.text = formatHealthConfidenceReason(estimate, confidence)
+        reasonView.setTextColor(
+            ContextCompat.getColor(
+                this,
+                when (estimate.confidence) {
+                    BatteryHealthEstimate.Confidence.HIGH -> R.color.color_accent_green
+                    BatteryHealthEstimate.Confidence.MEDIUM -> R.color.color_accent_amber
+                    BatteryHealthEstimate.Confidence.LOW -> R.color.btn_text_danger
+                }
+            )
+        )
         dialogView.findViewById<TextView>(R.id.tvHealthNotice).text = buildString {
-            if (healthPercent == null) append(getString(R.string.health_result_missing_rating_notice))
-            if (estimate.hasUnknownBatteryStatus) append(getString(R.string.health_status_unknown))
-            else append(getString(R.string.health_status_known))
-            if (estimate.totalBatterySpanPercent <= BatteryHealthEstimator.LOW_CONFIDENCE_SPAN_PERCENT) {
+            if (healthPercent == null) {
+                append(getString(R.string.health_result_missing_rated_capacity_short))
                 append("\n\n")
-                append(getString(R.string.health_low_span_warning, estimate.totalBatterySpanPercent))
             }
-            if (estimate.hasLegacyFullTail) {
-                append("\n\n")
-                append(getString(R.string.health_legacy_full_tail_notice))
-            }
-            append("\n\n")
-            append(getString(R.string.health_signed_result_notice))
+            append(getString(R.string.health_result_method_note))
         }
 
         MaterialAlertDialogBuilder(this)
@@ -472,6 +468,29 @@ class HistoryActivity : AppCompatActivity() {
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
             .show()
+    }
+
+    private fun formatHealthConfidenceReason(estimate: BatteryHealthEstimate, confidence: String): String {
+        val detail = estimate.confidenceReasons.map { reason ->
+            when (reason) {
+                BatteryHealthEstimate.ConfidenceReason.LIMITED_COVERAGE ->
+                    getString(R.string.health_confidence_reason_limited_coverage, estimate.totalBatterySpanPercent)
+                BatteryHealthEstimate.ConfidenceReason.SAMPLING_GAPS -> getString(R.string.health_confidence_reason_gap)
+                BatteryHealthEstimate.ConfidenceReason.LEGACY_FULL_TAIL -> getString(R.string.health_confidence_reason_legacy_tail)
+                BatteryHealthEstimate.ConfidenceReason.OUTLIER_HEALTH_VALUE -> getString(R.string.health_confidence_reason_outlier)
+                BatteryHealthEstimate.ConfidenceReason.NEEDS_MORE_COVERAGE ->
+                    getString(R.string.health_confidence_reason_medium_coverage, estimate.totalBatterySpanPercent)
+                BatteryHealthEstimate.ConfidenceReason.NEEDS_MORE_SESSIONS ->
+                    getString(R.string.health_confidence_reason_medium_sessions, estimate.totalBatterySpanPercent, estimate.acceptedSessionCount)
+                BatteryHealthEstimate.ConfidenceReason.COMPLETE_MULTI_SESSION_COVERAGE ->
+                    getString(R.string.health_confidence_reason_high, estimate.totalBatterySpanPercent, estimate.acceptedSessionCount)
+            }
+        }.joinToString(getString(R.string.health_confidence_reason_separator))
+        return if (estimate.confidence == BatteryHealthEstimate.Confidence.LOW) {
+            getString(R.string.health_confidence_reason_low, detail)
+        } else {
+            getString(R.string.health_confidence_reason_summary, confidence, detail)
+        }
     }
     private fun writeHistoryJsonToUri(uri: android.net.Uri) {
         lifecycleScope.launch(Dispatchers.IO) {

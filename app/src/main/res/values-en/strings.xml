@@ -74,7 +74,21 @@
     <string name="health_invalid_rated_capacity">Enter a valid rated capacity between 300 and 30000 mAh</string>
     <string name="health_calculate">Calculate</string>
     <string name="health_low_span_warning">Valid charging span totals only %1$d%%, so confidence is low. Select more or more complete charging sessions for a better estimate.</string>
-    <string name="health_invalid_data">The selected sessions contain interruptions, discharge, or invalid samples and cannot be estimated reliably.</string>
+    <string name="health_result_span">Valid span %1$d%%</string>
+    <string name="health_result_net_charge">Net charge %1$.1f mAh</string>
+    <string name="health_result_confidence">Confidence: %1$s</string>
+    <string name="health_result_missing_rated_capacity_short">Set a rated capacity to calculate the battery health percentage.</string>
+    <string name="health_confidence_reason_low">Low confidence: %1$s</string>
+    <string name="health_confidence_reason_summary">%1$s confidence: %2$s</string>
+    <string name="health_confidence_reason_separator">. </string>
+    <string name="health_confidence_reason_limited_coverage">valid span is only %1$d%%</string>
+    <string name="health_confidence_reason_gap">includes sampling gaps, so charge integration may be incomplete</string>
+    <string name="health_confidence_reason_legacy_tail">includes a legacy full-charge tail, so the endpoint is less certain</string>
+    <string name="health_confidence_reason_outlier">the estimate is outside the expected range</string>
+    <string name="health_confidence_reason_medium_coverage">valid span is %1$d%%; another complete charge can improve confidence</string>
+    <string name="health_confidence_reason_medium_sessions">valid span reaches %1$d%%, but only %2$d charge session is included</string>
+    <string name="health_confidence_reason_high">valid span reaches %1$d%% across %2$d charge sessions</string>
+    <string name="health_result_method_note">Estimated by integrating charging current; only FULL at 100%% battery is treated as confirmed full.</string>    <string name="health_invalid_data">The selected sessions contain interruptions, discharge, or invalid samples and cannot be estimated reliably.</string>
     <string name="health_result_with_rating">Estimated full capacity: %1$.0f mAh\nRated capacity: %2$.0f mAh\nBattery health: %3$.1f%%\nTotal valid charging span: %4$d%%\nConfidence: %5$s</string>
     <string name="health_result_without_rating">Estimated full capacity: %1$.0f mAh\nTotal valid charging span: %2$d%%\nConfidence: %3$s\n\nRated capacity is unavailable, so battery health cannot be calculated yet. Go back and enter it manually.</string>
     <string name="health_result_label">Battery health</string>
