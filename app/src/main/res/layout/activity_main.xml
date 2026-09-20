@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+<LinearLayout
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -244,24 +248,14 @@
     </GridLayout>
 
     <!-- Tab Layout -->
-    <per.jau.chargelog.LiquidTabLayout
-        android:id="@+id/tabLayout"
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/metricChips"
         android:layout_width="match_parent"
-        android:layout_height="44dp"
-        android:background="@drawable/bg_card_surface"
-        app:tabMode="fixed"
-        app:tabGravity="fill"
-        app:tabIndicator="@drawable/bg_tab_liquid_indicator"
-        app:tabIndicatorColor="@color/tab_indicator_tint"
-        app:tabIndicatorFullWidth="true"
-        app:tabIndicatorGravity="stretch"
-        app:tabIndicatorHeight="44dp"
-        app:tabIndicatorAnimationMode="elastic"
-        app:tabIndicatorAnimationDuration="320"
-        app:tabSelectedTextColor="@color/tab_selected_text"
-        app:tabTextColor="@color/tab_unselected_text"
-        app:tabRippleColor="@color/tab_ripple"
-        android:layout_marginBottom="12dp"/>
+        android:layout_height="wrap_content"
+        app:singleSelection="false"
+        app:selectionRequired="true"
+        app:chipSpacingHorizontal="4dp"
+        app:chipSpacingVertical="0dp" />
 
     <!-- Action Buttons Row -->
     <LinearLayout
@@ -451,10 +445,25 @@
         </LinearLayout>
     </LinearLayout>
 
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/chartLegend"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="2dp"
+        app:chipSpacingHorizontal="4dp"
+        app:chipSpacingVertical="4dp" />    <TextView
+        android:id="@+id/limitLegend"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/chart_limit_legend"
+        android:gravity="center"
+        android:textSize="12sp" />
+
     <!-- Line Chart Container -->
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
+        android:layout_height="240dp"
         android:layout_weight="1"
         android:background="@drawable/bg_card_surface"
         android:padding="8dp">
@@ -473,6 +482,14 @@
         android:layout_marginBottom="4dp"
         android:visibility="gone" />
 
+    <TextView
+        android:id="@+id/chartReadout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingVertical="4dp"
+        android:textSize="12sp"
+        android:textColor="?android:attr/textColorPrimary"
+        android:visibility="gone" />
     <!-- Power Chart Charged Energy Summary Banner (Non-overlapping) -->
     <LinearLayout
         android:id="@+id/layoutPowerSummaryBanner"
@@ -592,3 +609,4 @@
         android:layout_marginTop="6dp"/>
 
 </LinearLayout>
+</androidx.core.widget.NestedScrollView>

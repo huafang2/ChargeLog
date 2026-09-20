@@ -218,4 +218,12 @@
     <string name="power_peak_discharge">Peak discharge %.1f W</string>
     <string name="delete_selected_action">Delete Selected</string>
     <string name="clear_history_action">Clear History</string>
+    <string name="chart_legend_current">Current axis</string>
+    <string name="chart_legend_available">Available axis</string>
+    <string name="chart_legend_content_description">%1$s, unit %2$s, range %3$s to %4$s, %5$s. Tap to change the left axis.</string>
+    <string name="chart_limit_readout">Charger maximum power</string>
+    <string name="chart_flow_charge">Charging</string>
+    <string name="chart_flow_discharge">Discharging</string>
+    <string name="chart_flow_idle">No current</string>
+    <string name="chart_limit_legend">┄ Charger maximum power (W)</string>
 </resources>

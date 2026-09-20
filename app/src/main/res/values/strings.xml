@@ -219,4 +219,12 @@
     <string name="github_dialog_reset">返回</string>
     <string name="delete_selected_action">&#x5220;&#x9664;&#x5DF2;&#x9009;</string>
     <string name="clear_history_action">&#x6E05;&#x7A7A;&#x5386;&#x53F2;</string>
+    <string name="chart_legend_current">当前刻度</string>
+    <string name="chart_legend_available">可切换刻度</string>
+    <string name="chart_legend_content_description">%1$s，单位 %2$s，范围 %3$s 至 %4$s，%5$s。点按切换左侧刻度。</string>
+    <string name="chart_limit_readout">充电器最大功率</string>
+    <string name="chart_flow_charge">充电</string>
+    <string name="chart_flow_discharge">放电</string>
+    <string name="chart_flow_idle">无电流</string>
+    <string name="chart_limit_legend">┄ 充电器最大功率（W）</string>
 </resources>

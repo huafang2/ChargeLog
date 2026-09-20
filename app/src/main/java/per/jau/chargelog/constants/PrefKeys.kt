@@ -13,6 +13,9 @@ object PrefKeys {
     const val FORCE_NEW_SESSION = "FORCE_NEW_SESSION"
     const val USER_EXITED = "USER_EXITED"
 
+    const val CHART_METRICS = "CHART_METRICS"
+    const val CHART_ACTIVE_METRIC = "CHART_ACTIVE_METRIC"
+
     // ── 设置项 ────────────────────────────────────────────────────────────────
     const val SAMPLING_INTERVAL_SECONDS = "SAMPLING_INTERVAL_SECONDS"
     const val THEME_MODE = "THEME_MODE"

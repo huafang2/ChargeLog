@@ -5,440 +5,183 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
-import com.github.mikephil.charting.charts.LineChart
-import com.github.mikephil.charting.data.LineData
-import com.github.mikephil.charting.data.LineDataSet
-import com.github.mikephil.charting.data.Entry
-import com.github.mikephil.charting.highlight.Highlight
-import androidx.core.graphics.toColorInt
-import java.util.Locale
-import kotlin.math.abs
+import android.view.ViewConfiguration
 import androidx.core.graphics.withClip
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.components.YAxis
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.highlight.Highlight
+import per.jau.chargelog.data.ChargeRecord
+import kotlin.math.abs
 
+/** Shared time cursor; real values are displayed outside the plot by MainActivity. */
 class CustomLineChart @JvmOverloads constructor(
-    context: Context,
-    attrs: AttributeSet? = null,
-    defStyleAttr: Int = 0
+    context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
 ) : LineChart(context, attrs, defStyleAttr) {
-
     var isDraggingVerticalLine = false
-    private val touchTolerance = 35f * resources.displayMetrics.density // 35dp hit area for dragging
+        private set
+    var activeMetric = ChartMetric.POWER
+        set(value) {
+            field = value
+            updateLineStyles()
+        }
+    var baseTime = 0L
+    var screenRecords: List<ChargeRecord> = emptyList()
+        set(value) {
+            field = value
+            // Compute once per data update, never sort duplicated series during drawing.
+            val bands = mutableListOf<Pair<Long, Long>>()
+            var start: Long? = null
+            value.forEach { record ->
+                if (record.screenState == 0 && start == null) start = record.timestamp
+                if (record.screenState != 0 && start != null) {
+                    bands.add(start!! to record.timestamp)
+                    start = null
+                }
+            }
+            if (start != null && value.isNotEmpty()) bands.add(start!! to value.last().timestamp)
+            screenOffBands = bands
+        }
+    private var screenOffBands = emptyList<Pair<Long, Long>>()
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val displayDensity get() = resources.displayMetrics.density
     private var startX = 0f
     private var startY = 0f
     private var hasMoved = false
-
-    // Drawing paints
-    private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-    }
-    private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 12f * resources.displayMetrics.density
-        textAlign = Paint.Align.CENTER
-        typeface = android.graphics.Typeface.DEFAULT_BOLD
-    }
-    private val tooltipBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-    }
-    private val tooltipBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 1f * resources.displayMetrics.density
-    }
-    private val bandPaint = Paint().apply {
-        style = Paint.Style.FILL
-    }
+    private var previousDragEnabled = true
 
     override fun setData(data: LineData?) {
         super.setData(data)
-        // Disable default highlight indicator drawing from MPAndroidChart
-        // since we draw a custom premium 3D vertical line ourselves!
-        if (data != null) {
-            for (i in 0 until data.dataSetCount) {
-                val dataSet = data.getDataSetByIndex(i) as? LineDataSet ?: continue
-                dataSet.setDrawVerticalHighlightIndicator(false)
-                dataSet.setDrawHorizontalHighlightIndicator(false)
-                
-                // Initialize default visual state: 130/255 transparency, 2f width
-                val baseColor = dataSet.color
-                val red = Color.red(baseColor)
-                val green = Color.green(baseColor)
-                val blue = Color.blue(baseColor)
-                dataSet.color = Color.argb(130, red, green, blue)
-                dataSet.lineWidth = 2f
-            }
+        data?.dataSets?.forEach {
+            (it as? MetricLineDataSet)?.setDrawVerticalHighlightIndicator(false)
+            (it as? MetricLineDataSet)?.setDrawHorizontalHighlightIndicator(false)
         }
+        updateLineStyles()
+    }
+
+    private fun updateLineStyles() {
+        data?.dataSets?.forEach { set ->
+            val metricSet = set as? MetricLineDataSet ?: return@forEach
+            metricSet.lineWidth = if (metricSet.series.metric == activeMetric && !metricSet.series.isLimit) 2.8f else 1.6f
+        }
+        invalidate()
+    }
+
+    /** Resolve the actual dataset/entry, including segmented data, instead of assuming index zero. */
+    fun highlightForX(x: Float): Highlight? {
+        val sets = data?.dataSets ?: return null
+        val candidates = sets.mapIndexedNotNull { index, set ->
+            val metricSet = set as? MetricLineDataSet ?: return@mapIndexedNotNull null
+            if (metricSet.series.isLimit || set.entryCount == 0) return@mapIndexedNotNull null
+            val entry = set.getEntryForXValue(x, Float.NaN) ?: return@mapIndexedNotNull null
+            Triple(index, metricSet, entry)
+        }
+        val closest = candidates.minWithOrNull(compareBy(
+            { abs(it.third.x - x) },
+            { if (it.second.series.metric == activeMetric) 0 else 1 }
+        )) ?: return null
+        return Highlight(closest.third.x, closest.third.y, closest.first)
+    }
+
+    private fun updateHighlightForTouch(x: Float, y: Float) {
+        val point = floatArrayOf(x, y)
+        getTransformer(YAxis.AxisDependency.LEFT).pixelsToValue(point)
+        highlightValue(highlightForX(point[0]), true)
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        val hList = highlighted
-        val currentHighlight = if (hList != null && hList.isNotEmpty()) hList[0] else null
-
-        when (event.action) {
+        when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 startX = event.x
                 startY = event.y
                 hasMoved = false
-                if (currentHighlight != null) {
-                    val chartData = data
-                    if (chartData != null) {
-                        val dataSet = chartData.getDataSetByIndex(currentHighlight.dataSetIndex) as? LineDataSet
-                        if (dataSet != null) {
-                            // Calculate current highlight pixel X
-                            val pts = floatArrayOf(currentHighlight.x, currentHighlight.y)
-                            getTransformer(dataSet.axisDependency).pointValuesToPixel(pts)
-                            val drawX = pts[0]
-
-                            if (abs(event.x - drawX) <= touchTolerance) {
-                                isDraggingVerticalLine = true
-                                parent?.requestDisallowInterceptTouchEvent(true)
-                                isDragEnabled = false // Intercept panning
-                                updateHighlightForTouch(event.x, event.y)
-                                invalidate()
-                                return true
-                            }
-                        }
+                val selected = highlighted?.firstOrNull()
+                if (selected != null) {
+                    val point = floatArrayOf(selected.x, 0f)
+                    getTransformer(YAxis.AxisDependency.LEFT).pointValuesToPixel(point)
+                    if (abs(event.x - point[0]) <= 24f * displayDensity) {
+                        isDraggingVerticalLine = true
+                        previousDragEnabled = isDragEnabled
+                        isDragEnabled = false
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        return true
                     }
                 }
-                // If not scrubbing the vertical line, we might be panning the chart. Darken the lines!
-                setLineActiveState(true)
             }
             MotionEvent.ACTION_MOVE -> {
-                val density = resources.displayMetrics.density
-                val slop = 8f * density
-                if (abs(event.x - startX) > slop || abs(event.y - startY) > slop) {
-                    hasMoved = true
-                }
+                val slop = ViewConfiguration.get(context).scaledTouchSlop
+                if (abs(event.x - startX) > slop || abs(event.y - startY) > slop) hasMoved = true
                 if (isDraggingVerticalLine) {
                     updateHighlightForTouch(event.x, event.y)
-                    invalidate()
                     return true
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (isDraggingVerticalLine) {
                     isDraggingVerticalLine = false
-                    isDragEnabled = true
-                    if (event.action == MotionEvent.ACTION_UP && !hasMoved) {
-                        // User tapped the vertical line without dragging: deselect it
+                    isDragEnabled = previousDragEnabled
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    if (event.actionMasked == MotionEvent.ACTION_UP && !hasMoved) {
                         highlightValue(null, true)
+                        performClick()
                     }
-                    invalidate()
                     return true
                 }
-                // Stop panning, restore lines to normal state
-                setLineActiveState(false)
             }
         }
-
         return super.onTouchEvent(event)
     }
 
-    private fun updateHighlightForTouch(x: Float, y: Float) {
-        val chartData = data ?: return
-        if (chartData.dataSetCount == 0) return
-
-        // Get the X value under the touch point using the first dataset's transformer
-        val dataSet0 = chartData.getDataSetByIndex(0) ?: return
-        val pts = floatArrayOf(x, y)
-        getTransformer(dataSet0.axisDependency).pixelsToValue(pts)
-        val touchValX = pts[0]
-
-        // Find the entry in ALL datasets that is closest to touchValX
-        var closestEntry: Entry? = null
-        var closestDiff = Float.MAX_VALUE
-        var closestDataSetIndex = 0
-
-        for (i in 0 until chartData.dataSetCount) {
-            val dataSet = chartData.getDataSetByIndex(i) as? LineDataSet ?: continue
-            val entry = getClosestEntry(dataSet, touchValX) ?: continue
-            val diff = abs(entry.x - touchValX)
-            if (diff < closestDiff) {
-                closestDiff = diff
-                closestEntry = entry
-                closestDataSetIndex = i
-            }
-        }
-
-        // Highlight the closest entry
-        if (closestEntry != null) {
-            val highlight = Highlight(closestEntry.x, closestEntry.y, closestDataSetIndex)
-            highlightValue(highlight, true)
-        }
-    }
-
-    private fun getClosestEntry(dataSet: LineDataSet, targetX: Float): Entry? {
-        val entryCount = dataSet.entryCount
-        if (entryCount == 0) return null
-
-        var low = 0
-        var high = entryCount - 1
-        var closestEntry: Entry? = null
-        var minDiff = Float.MAX_VALUE
-
-        while (low <= high) {
-            val mid = (low + high) ushr 1
-            val entry = dataSet.getEntryForIndex(mid) ?: break
-            val diff = abs(entry.x - targetX)
-
-            if (diff < minDiff) {
-                minDiff = diff
-                closestEntry = entry
-            }
-
-            if (entry.x < targetX) {
-                low = mid + 1
-            } else if (entry.x > targetX) {
-                high = mid - 1
-            } else {
-                return entry // Exact match
-            }
-        }
-        return closestEntry
-    }
-
-    private fun setLineActiveState(active: Boolean) {
-        val chartData = data ?: return
-        for (i in 0 until chartData.dataSetCount) {
-            val dataSet = chartData.getDataSetByIndex(i) as? LineDataSet ?: continue
-            val baseColor = dataSet.color
-            val red = Color.red(baseColor)
-            val green = Color.green(baseColor)
-            val blue = Color.blue(baseColor)
-            if (active) {
-                dataSet.color = Color.argb(255, red, green, blue)
-                dataSet.lineWidth = 4f
-            } else {
-                dataSet.color = Color.argb(130, red, green, blue)
-                dataSet.lineWidth = 2f
-            }
-        }
-        invalidate()
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
     }
 
     override fun onDraw(canvas: Canvas) {
         drawScreenOffBands(canvas)
         super.onDraw(canvas)
-        drawCustomHighlight(canvas)
-    }
-
-    private fun drawCustomHighlight(canvas: Canvas) {
-        val hList = highlighted ?: return
-        if (hList.isEmpty()) return
-        val h = hList[0]
-
-        val top = viewPortHandler.contentTop()
-        val bottom = viewPortHandler.contentBottom()
-        val left = viewPortHandler.contentLeft()
-        val right = viewPortHandler.contentRight()
-
-        val chartData = data ?: return
-        val dataSet = chartData.getDataSetByIndex(h.dataSetIndex) as? LineDataSet ?: return
-        
-        // Calculate current highlight pixel coordinate
-        val pts = floatArrayOf(h.x, h.y)
-        getTransformer(dataSet.axisDependency).pointValuesToPixel(pts)
-        val drawX = pts[0]
-        val drawY = pts[1]
-
-        if (drawX < left || drawX > right) return
-
-        val baseColor = dataSet.color
-        val activeColor = Color.rgb(Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor))
-
-        // Adaptive high-contrast vertical line color
-        val nightModeFlags = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
-        val isNight = nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val verticalLineColor = if (isNight) {
-            "#FFC107".toColorInt() // High-contrast amber yellow for dark background
-        } else {
-            "#212121".toColorInt() // High-contrast charcoal black for light background
-        }
-
-        // 1. Draw glowing / 3D vertical line
-        if (isDraggingVerticalLine) {
-            // Glow layer
-            highlightPaint.color = Color.argb(60, Color.red(verticalLineColor), Color.green(verticalLineColor), Color.blue(verticalLineColor))
-            highlightPaint.strokeWidth = 7f * resources.displayMetrics.density
-            canvas.drawLine(drawX, top, drawX, bottom, highlightPaint)
-
-            // Inner main line
-            highlightPaint.color = Color.argb(220, Color.red(verticalLineColor), Color.green(verticalLineColor), Color.blue(verticalLineColor))
-            highlightPaint.strokeWidth = 3f * resources.displayMetrics.density
-            canvas.drawLine(drawX, top, drawX, bottom, highlightPaint)
-
-            // White core line (3D reflection)
-            highlightPaint.color = Color.WHITE
-            highlightPaint.strokeWidth = 1f * resources.displayMetrics.density
-            canvas.drawLine(drawX, top, drawX, bottom, highlightPaint)
-        } else {
-            // Static selected vertical line
-            highlightPaint.color = Color.argb(160, Color.red(verticalLineColor), Color.green(verticalLineColor), Color.blue(verticalLineColor))
-            highlightPaint.strokeWidth = 2f * resources.displayMetrics.density
-            canvas.drawLine(drawX, top, drawX, bottom, highlightPaint)
-        }
-
-        // 2. Draw intersection dot
-        if (drawY >= top && drawY <= bottom) {
-            // Glow outer ring
-            dotPaint.color = Color.argb(60, Color.red(verticalLineColor), Color.green(verticalLineColor), Color.blue(verticalLineColor))
-            canvas.drawCircle(drawX, drawY, 9f * resources.displayMetrics.density, dotPaint)
-
-            // Main dot ring (scrubber theme color)
-            dotPaint.color = verticalLineColor
-            canvas.drawCircle(drawX, drawY, 6f * resources.displayMetrics.density, dotPaint)
-
-            // Inner center dot (chart line color)
-            dotPaint.color = activeColor
-            canvas.drawCircle(drawX, drawY, 3.5f * resources.displayMetrics.density, dotPaint)
-
-            // White center reflection dot
-            dotPaint.color = Color.WHITE
-            canvas.drawCircle(drawX, drawY, 1.5f * resources.displayMetrics.density, dotPaint)
-        }
-
-        // 3. Draw tooltip displaying value
-        val entry = dataSet.getEntryForXValue(h.x, h.y) ?: return
-        val valueText = formatValue(entry.y, dataSet.label ?: "")
-
-        val textWidth = textPaint.measureText(valueText)
-        val textHeight = textPaint.fontMetrics.descent - textPaint.fontMetrics.ascent
-        val paddingHorizontal = 10f * resources.displayMetrics.density
-        val paddingVertical = 6f * resources.displayMetrics.density
-
-        val tooltipWidth = textWidth + paddingHorizontal * 2
-        val tooltipHeight = textHeight + paddingVertical * 2
-        val cornerRadius = 6f * resources.displayMetrics.density
-
-        // Position above the intersection dot
-        val tooltipX = drawX
-        var tooltipY = drawY - 18f * resources.displayMetrics.density - tooltipHeight / 2f
-
-        // If tooltip runs off the top of the viewport, position it below instead
-        if (tooltipY - tooltipHeight / 2f < top) {
-            tooltipY = drawY + 18f * resources.displayMetrics.density + tooltipHeight / 2f
-        }
-
-        var rectLeft = tooltipX - tooltipWidth / 2f
-        var rectRight = tooltipX + tooltipWidth / 2f
-
-        // Ensure tooltip stays inside left/right bounds
-        if (rectLeft < left) {
-            val offset = left - rectLeft
-            rectLeft += offset
-            rectRight += offset
-        } else if (rectRight > right) {
-            val offset = rectRight - right
-            rectLeft -= offset
-            rectRight -= offset
-        }
-
-        val rectTop = tooltipY - tooltipHeight / 2f
-        val rectBottom = tooltipY + tooltipHeight / 2f
-        val rect = RectF(rectLeft, rectTop, rectRight, rectBottom)
-
-        // Drop shadow for 3D depth
-        tooltipBgPaint.color = Color.argb(40, 0, 0, 0)
-        val shadowOffset = 2f * resources.displayMetrics.density
-        val shadowRect = RectF(rect.left + shadowOffset, rect.top + shadowOffset, rect.right + shadowOffset, rect.bottom + shadowOffset)
-        canvas.drawRoundRect(shadowRect, cornerRadius, cornerRadius, tooltipBgPaint)
-
-        // Tooltip background
-        tooltipBgPaint.color = "#E6262626".toColorInt() // Dark mode neutral grey
-        canvas.drawRoundRect(rect, cornerRadius, cornerRadius, tooltipBgPaint)
-
-        // Tooltip active accent border
-        tooltipBorderPaint.color = verticalLineColor
-        canvas.drawRoundRect(rect, cornerRadius, cornerRadius, tooltipBorderPaint)
-
-        // Tooltip text
-        textPaint.color = Color.WHITE
-        val textY = tooltipY - (textPaint.fontMetrics.descent + textPaint.fontMetrics.ascent) / 2f
-        canvas.drawText(valueText, rect.centerX(), textY, textPaint)
-    }
-
-    private fun formatValue(value: Float, label: String): String {
-        return when {
-            label.contains("电压") -> String.format(Locale.getDefault(), "%.2f V", value)
-            label.contains("电流") -> String.format(Locale.getDefault(), "%.2f A", value)
-            label.contains("功率") -> String.format(Locale.getDefault(), "%.2f W", value)
-            label.contains("电量") -> String.format(Locale.getDefault(), "%.0f%%", value)
-            else -> String.format(Locale.getDefault(), "%.2f", value)
+        val h = highlighted?.firstOrNull() ?: return
+        val point = floatArrayOf(h.x, 0f)
+        val transformer = getTransformer(YAxis.AxisDependency.LEFT)
+        transformer.pointValuesToPixel(point)
+        val bounds = viewPortHandler.contentRect
+        if (point[0] < bounds.left || point[0] > bounds.right) return
+        val night = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        canvas.withClip(bounds) {
+            paint.color = if (night) Color.LTGRAY else Color.DKGRAY
+            paint.strokeWidth = displayDensity
+            paint.style = Paint.Style.STROKE
+            drawLine(point[0], bounds.top, point[0], bounds.bottom, paint)
+            data?.dataSets?.forEach { set ->
+                val entry = set.getEntryForXValue(h.x, Float.NaN) ?: return@forEach
+                if (abs(entry.x - h.x) > .5f) return@forEach
+                val dot = floatArrayOf(entry.x, entry.y)
+                transformer.pointValuesToPixel(dot)
+                paint.color = set.color
+                paint.style = Paint.Style.FILL
+                drawCircle(dot[0], dot[1], 3.5f * displayDensity, paint)
+            }
         }
     }
 
     private fun drawScreenOffBands(canvas: Canvas) {
-        val chartData = data ?: return
-        if (chartData.dataSetCount == 0) return
-
-        val nightModeFlags = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
-        val isNight = nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES
-
-        // Increase alpha in night mode for better contrast (from 22 to 45)
-        bandPaint.color = if (isNight) {
-            Color.argb(45, 255, 255, 255)
-        } else {
-            Color.argb(22, 0, 0, 0)
-        }
-
-        // Collect all entries from all datasets in order to support multi-dataset/segmented series
-        val allEntries = ArrayList<Entry>()
-        for (dIdx in 0 until chartData.dataSetCount) {
-            val dataSet = chartData.getDataSetByIndex(dIdx) ?: continue
-            for (eIdx in 0 until dataSet.entryCount) {
-                val entry = dataSet.getEntryForIndex(eIdx)
-                if (entry != null) {
-                    allEntries.add(entry)
-                }
+        if (data == null) return
+        val night = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        paint.color = if (night) Color.argb(30, 255, 255, 255) else Color.argb(18, 0, 0, 0)
+        paint.style = Paint.Style.FILL
+        val bounds = viewPortHandler.contentRect
+        val transformer = getTransformer(YAxis.AxisDependency.LEFT)
+        canvas.withClip(bounds) {
+            screenOffBands.forEach { (start, end) ->
+                val points = floatArrayOf((start - baseTime).toFloat(), 0f, (end - baseTime).toFloat(), 0f)
+                transformer.pointValuesToPixel(points)
+                drawRect(points[0], bounds.top, points[2], bounds.bottom, paint)
             }
         }
-        allEntries.sortBy { it.x }
-
-        val entryCount = allEntries.size
-        if (entryCount < 2) return
-
-        val firstDataSet = chartData.getDataSetByIndex(0) ?: return
-        val trans = getTransformer(firstDataSet.axisDependency)
-        val top = viewPortHandler.contentTop()
-        val bottom = viewPortHandler.contentBottom()
-
-        canvas.withClip(viewPortHandler.contentRect) {
-            var i = 0
-            while (i < entryCount - 1) {
-                val entry = allEntries[i]
-                val screenOn = getScreenOnState(entry)
-                if (!screenOn) {
-                    val startX = entry.x
-                    var nextEntry = allEntries[i + 1]
-                    while (i < entryCount - 2 && !getScreenOnState(allEntries[i + 1])) {
-                        i++
-                        nextEntry = allEntries[i + 1]
-                    }
-                    val endX = nextEntry.x
-
-                    val ptsStart = floatArrayOf(startX, 0f)
-                    val ptsEnd = floatArrayOf(endX, 0f)
-                    trans.pointValuesToPixel(ptsStart)
-                    trans.pointValuesToPixel(ptsEnd)
-
-                    val left = ptsStart[0]
-                    val right = ptsEnd[0]
-
-                    canvas.drawRect(left, top, right, bottom, bandPaint)
-                }
-                i++
-            }
-        }
-    }
-
-    private fun getScreenOnState(entry: Entry): Boolean {
-        val d = entry.data
-        if (d is per.jau.chargelog.data.ChargeRecord) {
-            return d.screenState != 0
-        }
-        return true
     }
 }

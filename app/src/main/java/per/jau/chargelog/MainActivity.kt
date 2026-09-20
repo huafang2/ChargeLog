@@ -50,7 +50,7 @@ import com.github.mikephil.charting.formatter.ValueFormatter
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.tabs.TabLayout
+import com.google.android.material.chip.Chip
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -94,7 +94,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnShowData: Button
     private lateinit var btnExit: Button
     private lateinit var layoutBgReportBanner: View
-    private lateinit var tabLayout: TabLayout
+    private lateinit var metricChips: com.google.android.material.chip.ChipGroup
+    private lateinit var chartLegend: com.google.android.material.chip.ChipGroup
     private lateinit var layoutInterval: View
     private lateinit var layoutHistoryRetention: View
     private lateinit var layoutSettingsRow: View
@@ -120,7 +121,8 @@ class MainActivity : AppCompatActivity() {
     private var maxChargingLimitRangeMax: Float? = null
 
     private var currentRecords: List<ChargeRecord> = emptyList()
-    private var selectedTabIndex = 2
+    private var chartSelection = ChartSelection.restore(null, null)
+    private var chartRanges = emptyMap<ChartMetric, ChartRange>()
     private var observeJob: Job? = null
     private var liveTextUpdateJob: Job? = null
     private var lastHighlightedX: Float? = null
@@ -164,7 +166,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (savedInstanceState != null) {
-            selectedTabIndex = savedInstanceState.getInt("SELECTED_TAB_INDEX", 2)
             selectedRecordTimestamp = savedInstanceState
                 .getLong("SELECTED_RECORD_TIMESTAMP", Long.MIN_VALUE)
                 .takeIf { it != Long.MIN_VALUE }
@@ -223,7 +224,15 @@ class MainActivity : AppCompatActivity() {
         btnBannerClose.setOnClickListener {
             setViewsVisibleAnimated(layoutBgReportBanner to false)
         }
-        tabLayout = findViewById(R.id.tabLayout)
+        metricChips = findViewById(R.id.metricChips)
+        chartLegend = findViewById(R.id.chartLegend)
+        chartSelection = ChartSelection.restore(
+            savedInstanceState?.getStringArrayList(PrefKeys.CHART_METRICS)
+                ?: prefs.getStringSet(PrefKeys.CHART_METRICS, null),
+            savedInstanceState?.getString(PrefKeys.CHART_ACTIVE_METRIC)
+                ?: prefs.getString(PrefKeys.CHART_ACTIVE_METRIC, null),
+            savedInstanceState?.getInt("SELECTED_TAB_INDEX", 2) ?: 2
+        )
 
         tvCurrentVoltage = findViewById(R.id.tvCurrentVoltage)
         tvCurrentCurrent = findViewById(R.id.tvCurrentCurrent)
@@ -550,31 +559,175 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupTabs() {
-        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_voltage))
-        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_current))
-        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_power))
-        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_battery))
+    private fun metricLabel(metric: ChartMetric): String = getString(when (metric) {
+        ChartMetric.VOLTAGE -> R.string.tab_voltage
+        ChartMetric.CURRENT -> R.string.tab_current
+        ChartMetric.POWER -> R.string.tab_power
+        ChartMetric.BATTERY -> R.string.tab_battery
+    })
 
-        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-            override fun onTabSelected(tab: TabLayout.Tab?) {
-                selectedTabIndex = tab?.position ?: 0
-                updateChartData()
-            }
-            override fun onTabUnselected(tab: TabLayout.Tab?) {}
-            override fun onTabReselected(tab: TabLayout.Tab?) {}
-        })
-
-        // Select the restored tab index (Power index 2 by default)
-        tabLayout.getTabAt(selectedTabIndex)?.select()
+    private fun metricColor(metric: ChartMetric): Int {
+        val night = resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        return (when (metric) {
+            ChartMetric.VOLTAGE -> if (night) "#FF8080" else "#C62828"
+            ChartMetric.CURRENT -> if (night) "#82B1FF" else "#1565C0"
+            ChartMetric.POWER -> if (night) "#69DB96" else "#247A40"
+            ChartMetric.BATTERY -> if (night) "#FFBE66" else "#A65300"
+        }).toColorInt()
     }
 
+    private fun saveChartSelection() {
+        getSharedPreferences(PrefKeys.PREFS_NAME, MODE_PRIVATE).edit {
+            putStringSet(PrefKeys.CHART_METRICS, chartSelection.metrics.map { it.name }.toSet())
+            putString(PrefKeys.CHART_ACTIVE_METRIC, chartSelection.active.name)
+        }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupTabs() {
+        ChartMetric.entries.forEach { metric ->
+            val chip = Chip(this).apply {
+                id = View.generateViewId()
+                text = metricLabel(metric)
+                isCheckable = true
+                isCheckedIconVisible = true
+                setCheckedIconResource(R.drawable.ic_chart_check)
+                checkedIconTint = android.content.res.ColorStateList.valueOf(metricColor(metric))
+                val color = metricColor(metric)
+                chipBackgroundColor = android.content.res.ColorStateList(
+                    arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                    intArrayOf(Color.argb(28, Color.red(color), Color.green(color), Color.blue(color)), Color.TRANSPARENT)
+                )
+                isChecked = metric in chartSelection.metrics
+                setTextColor(metricColor(metric))
+                chipStrokeWidth = resources.displayMetrics.density
+                chipStrokeColor = android.content.res.ColorStateList.valueOf(metricColor(metric))
+                setOnCheckedChangeListener { button, checked ->
+                    if (checked != (metric in chartSelection.metrics)) {
+                        chartSelection = chartSelection.toggle(metric)
+                        button.isChecked = metric in chartSelection.metrics
+                        saveChartSelection()
+                        updateChartData()
+                    }
+                }
+            }
+            metricChips.addView(chip)
+        }
+        updateChartAxis()
+    }
+
+    private fun selectChartAxis(metric: ChartMetric) {
+        if (metric == chartSelection.active) return
+        chartSelection = chartSelection.copy(active = metric)
+        saveChartSelection()
+        // Only the ruler and emphasis change; the data and viewport stay intact.
+        updateChartAxis()
+    }
+
+    private fun formatRange(metric: ChartMetric, range: ChartRange): String {
+        val pattern = "%.${metric.digits}f–%.${metric.digits}f %s"
+        return String.format(Locale.getDefault(), pattern, range.min, range.max, metric.unit)
+    }
+
+    private fun updateChartLegend(ordered: List<ChartMetric>, active: ChartMetric) {
+        chartLegend.removeAllViews()
+        ordered.forEach { metric ->
+            val range = chartRanges[metric] ?: ChartRange.forMetric(metric, emptyList())
+            val color = metricColor(metric)
+            val isActive = metric == active
+            val rangeText = formatRange(metric, range)
+            chartLegend.addView(Chip(this).apply {
+                tag = metric
+                text = "━ ${metricLabel(metric)} · $rangeText"
+                contentDescription = getString(
+                    R.string.chart_legend_content_description,
+                    metricLabel(metric),
+                    metric.unit,
+                    String.format(Locale.getDefault(), "%.${metric.digits}f", range.min),
+                    String.format(Locale.getDefault(), "%.${metric.digits}f", range.max),
+                    getString(if (isActive) R.string.chart_legend_current else R.string.chart_legend_available)
+                )
+                isCheckable = false
+                isClickable = true
+                isFocusable = true
+                chipStrokeColor = android.content.res.ColorStateList.valueOf(color)
+                chipStrokeWidth = if (isActive) 2f * resources.displayMetrics.density else resources.displayMetrics.density
+                chipBackgroundColor = android.content.res.ColorStateList.valueOf(
+                    Color.argb(if (isActive) 42 else 16, Color.red(color), Color.green(color), Color.blue(color))
+                )
+                setTextColor(color)
+                setOnClickListener { selectChartAxis(metric) }
+            })
+        }
+    }
+
+    private fun updateChartAxis() {
+        val active = chartSelection.active
+        val ordered = chartSelection.ordered
+        val range = chartRanges[active] ?: ChartRange.forMetric(active, emptyList())
+        updateChartLegend(ordered, active)
+        lineChart.axisLeft.apply {
+            axisMinimum = 0f
+            axisMaximum = 100f
+            textColor = metricColor(active)
+            valueFormatter = object : ValueFormatter() {
+                override fun getFormattedValue(value: Float): String = active.format(range.fromPlot(value))
+            }
+            setLabelCount(5, true)
+            gridColor = Color.argb(35, Color.red(textColorPrimary), Color.green(textColorPrimary), Color.blue(textColorPrimary))
+            gridLineWidth = .5f
+        }
+        findViewById<TextView>(R.id.limitLegend).apply {
+            isVisible = ChartMetric.POWER in chartSelection.metrics
+            setTextColor(colorSummary)
+        }
+        // Reserve the widest selected ruler so switching units never clips labels or shifts curves.
+        val labelPaint = android.graphics.Paint().apply { textSize = lineChart.axisLeft.textSize }
+        val rulerWidth = ordered.maxOf { metric ->
+            val domain = chartRanges[metric] ?: ChartRange.forMetric(metric, emptyList())
+            maxOf(labelPaint.measureText(metric.format(domain.min)),
+                labelPaint.measureText(metric.format(domain.max)))
+        } / resources.displayMetrics.density + 12f
+        lineChart.axisLeft.minWidth = rulerWidth
+        lineChart.axisLeft.maxWidth = rulerWidth
+        lineChart.activeMetric = active
+        lineChart.invalidate()
+    }
+
+    private fun updateChartReadout() {
+        val view = findViewById<TextView>(R.id.chartReadout)
+        val record = selectedRecordTimestamp?.let { time -> currentRecords.find { it.timestamp == time } }
+        view.isVisible = record != null
+        if (record == null) { view.text = ""; return }
+        val text = android.text.SpannableStringBuilder()
+        text.append(SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(record.timestamp)))
+        text.append(" · ").append(getString(when {
+            record.current < 0 -> R.string.chart_flow_discharge
+            record.current > 0 -> R.string.chart_flow_charge
+            else -> R.string.chart_flow_idle
+        }))
+        chartSelection.ordered.forEachIndexed { index, metric ->
+            text.append(if (index % 2 == 0) "\n" else "    ")
+            val start = text.length
+            text.append(metricLabel(metric)).append(" ").append(metric.format(metric.value(record)))
+            text.setSpan(android.text.style.ForegroundColorSpan(metricColor(metric)),
+                start, text.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        if (ChartMetric.POWER in chartSelection.metrics) {
+            text.append("\n").append(getString(R.string.chart_limit_readout)).append(" ")
+            text.append(FastChargeLimit.powerWatts(record.maxVoltage, record.maxCurrent)
+                ?.let { ChartMetric.POWER.format(it) } ?: "—")
+        }
+        view.text = text
+    }
     private fun setupChart() {
         lineChart.description.isEnabled = false
         lineChart.setTouchEnabled(true)
         lineChart.isDragEnabled = true
         lineChart.setScaleEnabled(true)
-        lineChart.setPinchZoom(true)
+
         // Disable highlight per drag to make scrolling smoother, 
         // and use the scrubber for precise selection
         lineChart.isHighlightPerDragEnabled = false 
@@ -590,7 +743,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
-        lineChart.axisLeft.textColor = textColorPrimary
+        lineChart.axisLeft.textSize = 11f * resources.configuration.fontScale
+        lineChart.xAxis.textSize = 10f * resources.configuration.fontScale
+        lineChart.setScaleYEnabled(false)
+        lineChart.setPinchZoom(false)
+        lineChart.xAxis.setDrawGridLines(false)
+        lineChart.xAxis.setAvoidFirstLastClipping(true)
+        lineChart.xAxis.setLabelCount(if (resources.configuration.fontScale > 1.2f) 2 else 3, true)
+        lineChart.legend.isEnabled = false
+        updateChartAxis()
         lineChart.axisRight.isEnabled = false
         lineChart.legend.textColor = textColorPrimary
 
@@ -616,6 +777,7 @@ class MainActivity : AppCompatActivity() {
 
                 selectedRecordTimestamp = record.timestamp
                 lastHighlightedX = e.x
+                updateChartReadout()
                 updateDashboardText(record, true)
                 updatePowerTabSummary(index)
                 menuDeleteSegment?.isVisible = true
@@ -627,6 +789,7 @@ class MainActivity : AppCompatActivity() {
             override fun onNothingSelected() {
                 selectedRecordTimestamp = null
                 lastHighlightedX = null
+                updateChartReadout()
                 menuDeleteSegment?.isVisible = false
                 if (currentRecords.isNotEmpty()) {
                     val historySessionId = intent.getLongExtra(PrefKeys.EXTRA_HISTORY_SESSION_ID, -1L)
@@ -642,41 +805,12 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        // Tap vertical line to deselect
-        lineChart.onChartGestureListener = object : com.github.mikephil.charting.listener.OnChartGestureListener {
-            override fun onChartGestureStart(me: android.view.MotionEvent?, lastGesture: com.github.mikephil.charting.listener.ChartTouchListener.ChartGesture?) {}
-            override fun onChartGestureEnd(me: android.view.MotionEvent?, lastGesture: com.github.mikephil.charting.listener.ChartTouchListener.ChartGesture?) {}
-            override fun onChartLongPressed(me: android.view.MotionEvent?) {}
-            override fun onChartDoubleTapped(me: android.view.MotionEvent?) {}
-            
-            override fun onChartSingleTapped(me: android.view.MotionEvent?) {
-                if (me == null) return
-                val xVal = lastHighlightedX ?: return
-                val data = lineChart.data ?: return
-                // Find the first dataset that is not empty
-                val dataSet = data.dataSets.firstOrNull { it.entryCount > 0 } ?: return
-                val trans = lineChart.getTransformer(dataSet.axisDependency)
-                val pts = floatArrayOf(xVal, 0f)
-                trans.pointValuesToPixel(pts)
-                val pixelX = pts[0]
-                
-                val density = resources.displayMetrics.density
-                val tolerance = 25f * density // 25 dp
-                
-                if (abs(me.x - pixelX) < tolerance) {
-                    clearChartSelection()
-                }
-            }
-            
-            override fun onChartFling(me1: android.view.MotionEvent?, me2: android.view.MotionEvent?, velocityX: Float, velocityY: Float) {}
-            override fun onChartScale(me: android.view.MotionEvent?, scaleX: Float, scaleY: Float) {}
-            override fun onChartTranslate(me: android.view.MotionEvent?, dX: Float, dY: Float) {}
-        }
     }
 
     private fun clearChartSelection() {
         selectedRecordTimestamp = null
         lastHighlightedX = null
+        updateChartReadout()
         menuDeleteSegment?.isVisible = false
         lineChart.post {
             lineChart.highlightValue(null, true)
@@ -692,12 +826,12 @@ class MainActivity : AppCompatActivity() {
                     val x = (record.timestamp - chartBaseTime).toFloat()
                     
                     // Highlight the point
-                    val highlight = Highlight(x, 0, 0) // dataSetIndex 0
+                    val highlight = lineChart.highlightForX(x) ?: return
                     lineChart.highlightValue(highlight, true)
                     updatePowerTabSummary(progress)
                     
                     // Center the chart on the highlighted point if zoomed
-                    lineChart.centerViewToAnimated(x, lineChart.centerOfView.y, lineChart.data.getDataSetByIndex(0).axisDependency, 100)
+                    lineChart.centerViewToAnimated(x, 50f, com.github.mikephil.charting.components.YAxis.AxisDependency.LEFT, 100)
                 }
             }
             override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {
@@ -728,7 +862,8 @@ class MainActivity : AppCompatActivity() {
                     currentRecords = emptyList()
                     selectedRecordTimestamp = null
                     lastHighlightedX = null
-                    lineChart.clear()
+                    updateChartReadout()
+                    updateChartData()
                     setViewsVisibleAnimated(
                         btnShowData to false,
                         sbChartScrubber to false
@@ -769,6 +904,7 @@ class MainActivity : AppCompatActivity() {
                 if (selectedRecordTimestamp != null && selectedIndexBeforeUpdate == null) {
                     selectedRecordTimestamp = null
                     lastHighlightedX = null
+                    updateChartReadout()
                     menuDeleteSegment?.isVisible = false
                     lineChart.highlightValue(null, false)
                 }
@@ -794,7 +930,7 @@ class MainActivity : AppCompatActivity() {
                         sbChartScrubber.progress = selectedIndex
                         lineChart.post {
                             lineChart.highlightValue(
-                                Highlight(lastHighlightedX ?: 0f, 0, 0),
+                                lineChart.highlightForX(lastHighlightedX ?: 0f),
                                 false
                             )
                         }
@@ -1297,152 +1433,70 @@ class MainActivity : AppCompatActivity() {
         return spannable
     }
 
-    private fun createLineDataSet(entries: List<Entry>, label: String, color: Int): LineDataSet {
-        val dataSet = LineDataSet(entries, label)
-        dataSet.color = color
-        dataSet.setDrawCircles(false)
-        dataSet.valueTextColor = textColorPrimary
-        dataSet.isHighlightEnabled = true
-        dataSet.setDrawHighlightIndicators(true)
-        dataSet.setDrawVerticalHighlightIndicator(true)
-        dataSet.setDrawHorizontalHighlightIndicator(false)
-        dataSet.highLightColor = textColorPrimary // Highlight line color
-        dataSet.highlightLineWidth = 1.5f
-        return dataSet
-    }
-
-    private fun addFastChargeLimitDataSets(dataSets: MutableList<LineDataSet>) {
-        var legendAdded = false
-        FastChargeLimit.contiguousSegments(currentRecords).forEach { segment ->
-            val entries = segment.mapNotNull { record ->
-                FastChargeLimit.powerWatts(record.maxVoltage, record.maxCurrent)?.let { limitPower ->
-                    Entry((record.timestamp - chartBaseTime).toFloat(), limitPower, record)
+    private fun updateChartData() {
+        chartRanges = chartSelection.metrics.associateWith { ChartRange.forMetric(it, currentRecords) }
+        lineChart.screenRecords = currentRecords
+        lineChart.baseTime = chartBaseTime
+        if (currentRecords.isEmpty()) {
+            lineChart.clear()
+            updateChartAxis()
+            updateChartReadout()
+            updatePowerTabSummary()
+            return
+        }
+        val dataSets = ArrayList<LineDataSet>()
+        fun addSegments(metric: ChartMetric, segments: List<List<ChargeRecord>>, isLimit: Boolean = false) {
+            var first = true
+            for (segment in segments) {
+                val range = chartRanges.getValue(metric)
+                val entries = segment.mapNotNull { record ->
+                    val raw = if (isLimit) FastChargeLimit.powerWatts(record.maxVoltage, record.maxCurrent)
+                        else metric.value(record).takeIf { it.isFinite() }
+                    raw?.let { Entry((record.timestamp - chartBaseTime).toFloat(), range.toPlot(it), record) }
                 }
-            }
-            if (entries.isEmpty()) return@forEach
-
-            val dataSet = createLineDataSet(
-                entries,
-                if (legendAdded) "" else getString(R.string.chart_fast_charge_limit),
-                colorSummary
-            ).apply {
-                lineWidth = 2f
-                enableDashedLine(12f, 6f, 0f)
-                setDrawCircles(entries.size == 1)
-                if (entries.size == 1) {
-                    setCircleColor(colorSummary)
+                if (entries.isEmpty()) continue
+                val label = if (!first) "" else if (isLimit) getString(R.string.chart_limit_readout) else metricLabel(metric)
+                val set = MetricLineDataSet(entries, label, ChartSeries(metric, isLimit)).apply {
+                    color = if (isLimit) colorSummary else metricColor(metric)
+                    setDrawValues(false)
+                    setDrawFilled(false)
+                    setDrawCircles(entries.size == 1)
+                    setCircleColor(color)
                     circleRadius = 3f
                     setDrawCircleHole(false)
+                    mode = LineDataSet.Mode.LINEAR
+                    if (isLimit) enableDashedLine(12f, 6f, 0f)
+                    if (!first) form = Legend.LegendForm.NONE
                 }
-                if (legendAdded) form = Legend.LegendForm.NONE
-            }
-            dataSets.add(dataSet)
-            legendAdded = true
-        }
-    }
-    private fun updateChartData() {
-        if (currentRecords.isEmpty()) return
-
-        val dataSets = ArrayList<LineDataSet>()
-        var currentSegment = ArrayList<Entry>()
-        var isSegmentDischarging: Boolean? = null
-
-        for (i in currentRecords.indices) {
-            val record = currentRecords[i]
-            val x = (record.timestamp - chartBaseTime).toFloat()
-            val y = when (selectedTabIndex) {
-                0 -> record.voltage
-                1 -> record.current
-                2 -> record.power
-                else -> record.batteryLevel.toFloat()
-            }
-            val isDischarging = record.current < 0
-
-            when (isSegmentDischarging) {
-                null -> {
-                    isSegmentDischarging = isDischarging
-                    currentSegment.add(Entry(x, y, record))
-                }
-                isDischarging -> {
-                    currentSegment.add(Entry(x, y, record))
-                }
-                else -> {
-                    // Bridge point to make lines continuous
-                    currentSegment.add(Entry(x, y, record))
-
-                    val color = when (selectedTabIndex) {
-                        0 -> Color.RED
-                        1 -> "#4488FF".toColorInt()
-                        2 -> if (isSegmentDischarging) "#4488FF".toColorInt() else Color.GREEN
-                        else -> "#FF9800".toColorInt()
-                    }
-
-                    val label = if (dataSets.isEmpty()) {
-                        when (selectedTabIndex) {
-                            0 -> getString(R.string.chart_voltage)
-                            1 -> getString(R.string.chart_current)
-                            2 -> getString(R.string.chart_power)
-                            else -> getString(R.string.chart_battery)
-                        }
-                    } else {
-                        ""
-                    }
-
-                    val dataSet = createLineDataSet(currentSegment, label, color)
-                    if (dataSets.isNotEmpty()) {
-                        dataSet.form = Legend.LegendForm.NONE
-                    }
-                    dataSets.add(dataSet)
-
-                    // Start new segment
-                    currentSegment = ArrayList()
-                    currentSegment.add(Entry(x, y, record))
-                    isSegmentDischarging = isDischarging
-                }
+                dataSets.add(set)
+                first = false
             }
         }
-
-        // Add the last segment
-        if (currentSegment.isNotEmpty() && isSegmentDischarging != null) {
-            val color = when (selectedTabIndex) {
-                0 -> Color.RED
-                1 -> "#4488FF".toColorInt()
-                2 -> if (isSegmentDischarging) "#4488FF".toColorInt() else Color.GREEN
-                else -> "#FF9800".toColorInt()
+        chartSelection.ordered.forEach { metric ->
+            // Invalid values break a series instead of connecting across missing data.
+            val segments = mutableListOf<List<ChargeRecord>>()
+            var segment = mutableListOf<ChargeRecord>()
+            currentRecords.forEach { record ->
+                if (metric.value(record).isFinite()) segment.add(record)
+                else if (segment.isNotEmpty()) { segments.add(segment); segment = mutableListOf() }
             }
-            
-            val label = if (dataSets.isEmpty()) {
-                when (selectedTabIndex) {
-                    0 -> getString(R.string.chart_voltage)
-                    1 -> getString(R.string.chart_current)
-                    2 -> getString(R.string.chart_power)
-                    else -> getString(R.string.chart_battery)
-                }
-            } else {
-                ""
-            }
-
-            val dataSet = createLineDataSet(currentSegment, label, color)
-            if (dataSets.isNotEmpty()) {
-                dataSet.form = Legend.LegendForm.NONE
-            }
-            dataSets.add(dataSet)
+            if (segment.isNotEmpty()) segments.add(segment)
+            addSegments(metric, segments)
+            if (metric == ChartMetric.POWER) addSegments(metric, FastChargeLimit.contiguousSegments(currentRecords), true)
         }
-
-        if (selectedTabIndex == 2) {
-            addFastChargeLimitDataSets(dataSets)
-        }
-
-        val lineData = LineData(dataSets.map { it })
-        lineChart.data = lineData
+        lineChart.data = LineData(dataSets.map { it })
+        updateChartAxis()
         lineChart.notifyDataSetChanged()
+        selectedRecordTimestamp?.let { timestamp ->
+            lineChart.highlightValue(lineChart.highlightForX((timestamp - chartBaseTime).toFloat()), false)
+        }
         lineChart.invalidate()
+        updateChartReadout()
         updatePowerTabSummary(selectedRecordIndex())
     }
-
     private fun updatePowerTabSummary(targetIndex: Int? = null) {
         if (!::layoutPowerSummaryBanner.isInitialized || !::tvPowerSummaryText.isInitialized) return
-        if (selectedTabIndex != 2 || currentRecords.isEmpty()) {
+        if (ChartMetric.POWER !in chartSelection.metrics || currentRecords.isEmpty()) {
             setViewsVisibleAnimated(
                 layoutPowerSummaryBanner to false,
                 layoutPowerPeakSummary to false
@@ -1855,7 +1909,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putInt("SELECTED_TAB_INDEX", selectedTabIndex)
+        outState.putStringArrayList(PrefKeys.CHART_METRICS, ArrayList(chartSelection.metrics.map { it.name }))
+        outState.putString(PrefKeys.CHART_ACTIVE_METRIC, chartSelection.active.name)
         selectedRecordTimestamp?.let { outState.putLong("SELECTED_RECORD_TIMESTAMP", it) }
         outState.putBoolean("MAX_CHARGING_LIMIT_VISIBLE", maxChargingLimitTargetVisible)
         maxChargingLimitVoltage?.let { outState.putFloat("MAX_CHARGING_LIMIT_VOLTAGE", it) }
