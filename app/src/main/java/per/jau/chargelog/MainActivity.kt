@@ -51,6 +51,7 @@ import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.chip.Chip
+import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -123,6 +124,8 @@ class MainActivity : AppCompatActivity() {
     private var currentRecords: List<ChargeRecord> = emptyList()
     private var chartSelection = ChartSelection.restore(null, null)
     private var chartRanges = emptyMap<ChartMetric, ChartRange>()
+    private val actionButtonLabels = mutableMapOf<MaterialButton, CharSequence>()
+    private var isAdjustingActionButtonText = false
     private var observeJob: Job? = null
     private var liveTextUpdateJob: Job? = null
     private var lastHighlightedX: Float? = null
@@ -219,6 +222,7 @@ class MainActivity : AppCompatActivity() {
         btnClear = findViewById(R.id.btnClear)
         btnShowData = findViewById(R.id.btnShowData)
         btnExit = findViewById(R.id.btnExit)
+        listOf(btnStart, btnStop, btnClear, btnExit).forEach { setupActionButtonText(it as MaterialButton) }
         layoutBgReportBanner = findViewById(R.id.layoutBgReportBanner)
         val btnBannerClose = findViewById<Button>(R.id.btnBannerClose)
         btnBannerClose.setOnClickListener {
@@ -458,6 +462,47 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun setupActionButtonText(button: MaterialButton) {
+        actionButtonLabels[button] = button.text
+        button.contentDescription = button.text
+        button.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            if (right - left != oldRight - oldLeft) fitActionButtonText(button)
+        }
+        button.post { fitActionButtonText(button) }
+    }
+
+    private fun fitActionButtonText(button: MaterialButton) {
+        if (isAdjustingActionButtonText || button.visibility != View.VISIBLE || button.width <= 0) return
+        val label = actionButtonLabels[button] ?: return
+        isAdjustingActionButtonText = true
+        try {
+            val iconSpace = if (button.icon != null) button.iconSize + button.iconPadding else 0
+            val reserved = button.paddingLeft + button.paddingRight + iconSpace + (8f * resources.displayMetrics.density).toInt()
+            val available = (button.width - reserved).coerceAtLeast(0)
+            val fittingSize = (13 downTo 11).firstOrNull { size ->
+                button.paint.textSize = size * resources.displayMetrics.scaledDensity
+                button.paint.measureText(label.toString()) <= available
+            }
+            button.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, (fittingSize ?: 13).toFloat())
+            button.text = fittingSize?.let { label } ?: ""
+            button.contentDescription = label
+        } finally {
+            isAdjustingActionButtonText = false
+        }
+    }
+
+    private fun animateMetricChip(chip: View) {
+        if (!ValueAnimator.areAnimatorsEnabled()) return
+        chip.animate().cancel()
+        chip.animate()
+            .scaleX(.96f)
+            .scaleY(.96f)
+            .setDuration(80L)
+            .withEndAction {
+                chip.animate().scaleX(1f).scaleY(1f).setDuration(100L).start()
+            }
+            .start()
+    }
     private fun setViewsVisibleAnimated(vararg changes: Pair<View, Boolean>) {
         val pendingChanges = changes.filter { (view, visible) ->
             view.visibility != if (visible) View.VISIBLE else View.GONE
@@ -485,6 +530,7 @@ class MainActivity : AppCompatActivity() {
         pendingChanges.forEach { (view, visible) ->
             view.animate().cancel()
             view.visibility = if (visible) View.VISIBLE else View.GONE
+            (view as? MaterialButton)?.post { fitActionButtonText(view) }
         }
     }
 
@@ -592,6 +638,10 @@ class MainActivity : AppCompatActivity() {
                 id = View.generateViewId()
                 text = metricLabel(metric)
                 isCheckable = true
+                // Keep an equally sized icon slot in both states so the row never reflows.
+                isChipIconVisible = true
+                setChipIconResource(R.drawable.ic_chart_check)
+                chipIconTint = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
                 isCheckedIconVisible = true
                 setCheckedIconResource(R.drawable.ic_chart_check)
                 checkedIconTint = android.content.res.ColorStateList.valueOf(metricColor(metric))
@@ -608,6 +658,7 @@ class MainActivity : AppCompatActivity() {
                     if (checked != (metric in chartSelection.metrics)) {
                         chartSelection = chartSelection.toggle(metric)
                         button.isChecked = metric in chartSelection.metrics
+                        animateMetricChip(button)
                         saveChartSelection()
                         updateChartData()
                     }

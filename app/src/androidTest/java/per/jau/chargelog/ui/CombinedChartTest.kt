@@ -8,6 +8,7 @@ import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -218,6 +219,40 @@ class CombinedChartTest {
                     assertTrue(text.layout.height <= text.height - text.paddingTop - text.paddingBottom)
                     for (line in 0 until text.lineCount) assertEquals(0, text.layout.getEllipsisCount(line))
                 }
+            }
+        }
+    }
+
+    @Test fun metricSelectionAndRecordingStateKeepControlGeometryStable() {
+        launch().use { scenario ->
+            instrumentation.waitForIdleSync()
+            scenario.onActivity { activity ->
+                val metricChips = activity.findViewById<ChipGroup>(R.id.metricChips)
+                val before = (0 until metricChips.childCount).associate { index ->
+                    val chip = metricChips.getChildAt(index) as Chip
+                    chip.id to (chip.left to chip.width)
+                }
+                val voltage = metricChips.getChildAt(0) as Chip
+                voltage.performClick()
+                assertTrue(voltage.isChecked)
+                (0 until metricChips.childCount).forEach { index ->
+                    val chip = metricChips.getChildAt(index) as Chip
+                    assertEquals(before[chip.id], chip.left to chip.width)
+                }
+
+                val slot = activity.findViewById<FrameLayout>(R.id.startStopSlot)
+                val start = activity.findViewById<View>(R.id.btnStart)
+                val stop = activity.findViewById<View>(R.id.btnStop)
+                val clear = activity.findViewById<View>(R.id.btnClear)
+                val exit = activity.findViewById<View>(R.id.btnExit)
+                assertSame(slot, start.parent)
+                assertSame(slot, stop.parent)
+                val clearBounds = clear.left to clear.width
+                val exitBounds = exit.left to exit.width
+                start.visibility = View.GONE
+                stop.visibility = View.VISIBLE
+                assertEquals(clearBounds, clear.left to clear.width)
+                assertEquals(exitBounds, exit.left to exit.width)
             }
         }
     }
